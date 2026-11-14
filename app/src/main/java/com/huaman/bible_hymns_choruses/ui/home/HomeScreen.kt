@@ -197,11 +197,11 @@ fun BibleHymnsChorusesHomeScreen(
                 .padding(innerPadding)
         ) {
             // Main scrollable feed
+            val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+            val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
             AnimatedContent(
                 targetState = selectedSection,
                 transitionSpec = {
-                    val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-                    val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
                     (fadeIn(effectsSpec) + scaleIn(spatialSpec, initialScale = 0.96f))
                         .togetherWith(fadeOut(effectsSpec) + scaleOut(spatialSpec, targetScale = 0.98f))
                 },
