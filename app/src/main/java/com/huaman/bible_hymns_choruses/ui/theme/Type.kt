@@ -19,7 +19,7 @@ val googleFontProvider = GoogleFont.Provider(
 val googleSansFlexFont = GoogleFont("Google Sans Flex")
 
 // From M3 (references/typography.md): Brand & Plain typeface slots configured with Google Sans Flex
-// My design decision (not in M3): Use Google Sans Flex across both Brand and Plain slots with Normal, Medium, and Bold weights
+// My design decision (not in M3): Use Google Sans Flex across both Brand and Plain slots with Normal, Medium, SemiBold, and Bold weights
 val GoogleSansFlexFontFamily = FontFamily(
     Font(
         googleFont = googleSansFlexFont,
@@ -34,9 +34,33 @@ val GoogleSansFlexFontFamily = FontFamily(
     Font(
         googleFont = googleSansFlexFont,
         fontProvider = googleFontProvider,
+        weight = FontWeight.SemiBold
+    ),
+    Font(
+        googleFont = googleSansFlexFont,
+        fontProvider = googleFontProvider,
         weight = FontWeight.Bold
     )
 )
+
+/**
+ * Dynamic reader [TextStyle] for Bible verses and hymn/chorus stanzas, responding live to
+ * user-selected font size (`sp`), weight (`400..700`), and grade (`-50..150`) of Google Sans Flex.
+ */
+fun readerBodyTextStyle(
+    fontSizeSp: Float = 18f,
+    fontWeightValue: Int = 400,
+    fontGradeValue: Int = 0
+): TextStyle {
+    val effectiveWeight = (fontWeightValue + (fontGradeValue / 2)).coerceIn(300, 800)
+    return TextStyle(
+        fontFamily = GoogleSansFlexFontFamily,
+        fontWeight = FontWeight(effectiveWeight),
+        fontSize = fontSizeSp.sp,
+        lineHeight = (fontSizeSp * 1.55f).sp,
+        letterSpacing = if (fontGradeValue > 50) 0.15.sp else 0.25.sp
+    )
+}
 
 // From M3 (references/tokens.md): 15 baseline + 15 emphasized type scale styles
 // Baseline and emphasized are used together; emphasized matches baseline size/lineHeight and adjusts weight and tracking.
