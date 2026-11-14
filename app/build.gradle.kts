@@ -69,6 +69,7 @@ dependencies {
 
     // Jetpack DataStore (Offline Preferences)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.graphics.path)
 
     // Navigation Compose (Type-Safe) & Kotlinx Serialization
     implementation(libs.androidx.navigation.compose)
