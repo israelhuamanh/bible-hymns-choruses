@@ -2,31 +2,42 @@
 
 package com.huaman.bible_hymns_choruses.presentation.home
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.FloatingToolbarExitDirection
-import androidx.compose.material3.FloatingToolbarHorizontalFabPosition
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -35,17 +46,29 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -91,14 +114,36 @@ class MainAppViewModel @Inject constructor(
     }
 }
 
-private enum class MainToolbarTab(
-    val tab: ActiveAppTab,
+private enum class MainNavTab(
     val label: String,
-    val icon: ImageVector
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
+    val activeAppTab: ActiveAppTab?
 ) {
-    BIBLE(ActiveAppTab.BIBLE, "Biblia", Icons.AutoMirrored.Rounded.MenuBook),
-    SONGS(ActiveAppTab.SONGS, "Cantos", Icons.Rounded.LibraryMusic),
-    BOOKMARKS(ActiveAppTab.BOOKMARKS, "Guardados", Icons.Rounded.Bookmark)
+    BIBLE(
+        label = "Biblia",
+        selectedIcon = Icons.AutoMirrored.Rounded.MenuBook,
+        unselectedIcon = Icons.AutoMirrored.Outlined.MenuBook,
+        activeAppTab = ActiveAppTab.BIBLE
+    ),
+    SONGS(
+        label = "Cantos",
+        selectedIcon = Icons.Rounded.LibraryMusic,
+        unselectedIcon = Icons.Outlined.LibraryMusic,
+        activeAppTab = ActiveAppTab.SONGS
+    ),
+    BOOKMARKS(
+        label = "Guardados",
+        selectedIcon = Icons.Rounded.Bookmark,
+        unselectedIcon = Icons.Outlined.BookmarkBorder,
+        activeAppTab = ActiveAppTab.BOOKMARKS
+    ),
+    SEARCH(
+        label = "Buscar",
+        selectedIcon = Icons.Rounded.Search,
+        unselectedIcon = Icons.Outlined.Search,
+        activeAppTab = null
+    )
 }
 
 @Composable
@@ -124,28 +169,59 @@ fun MainScaffold(
     val isMainTabRoute = currentDestination?.let { dest ->
         dest.hasRoute<AppRoute.BibleReaderRoute>() ||
             dest.hasRoute<AppRoute.SongsRoute>() ||
-            dest.hasRoute<AppRoute.BookmarksRoute>()
+            dest.hasRoute<AppRoute.BookmarksRoute>() ||
+            dest.hasRoute<AppRoute.GlobalSearchRoute>()
     } ?: true
 
     val activeTab = when {
-        currentDestination?.hasRoute<AppRoute.SongsRoute>() == true -> ActiveAppTab.SONGS
-        currentDestination?.hasRoute<AppRoute.BookmarksRoute>() == true -> ActiveAppTab.BOOKMARKS
-        else -> ActiveAppTab.BIBLE
+        currentDestination?.hasRoute<AppRoute.SongsRoute>() == true -> MainNavTab.SONGS
+        currentDestination?.hasRoute<AppRoute.BookmarksRoute>() == true -> MainNavTab.BOOKMARKS
+        currentDestination?.hasRoute<AppRoute.GlobalSearchRoute>() == true -> MainNavTab.SEARCH
+        else -> MainNavTab.BIBLE
     }
 
-    val scrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
-        exitDirection = FloatingToolbarExitDirection.Bottom
-    )
+    // Hide-on-scroll with 40dp threshold (matching SpringFloatingNavBar behavior)
+    val density = LocalDensity.current
+    val hideThresholdPx = with(density) { 40.dp.toPx() }
+    var isNavBarVisible by remember { mutableStateOf(true) }
+    var scrollAccumulatorPx by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(activeTab) {
+        isNavBarVisible = true
+        scrollAccumulatorPx = 0f
+    }
+
+    val nestedScrollConnection = remember(hideThresholdPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val deltaY = available.y
+                if (deltaY < 0f) {
+                    // Scrolling down -> accumulate downward scroll
+                    scrollAccumulatorPx = (scrollAccumulatorPx - deltaY).coerceAtLeast(0f)
+                    if (scrollAccumulatorPx > hideThresholdPx && isNavBarVisible) {
+                        isNavBarVisible = false
+                    }
+                } else if (deltaY > 0f) {
+                    // Scrolling up -> reveal navbar
+                    scrollAccumulatorPx = 0f
+                    if (!isNavBarVisible) {
+                        isNavBarVisible = true
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier
             .fillMaxSize()
-            .nestedScroll(scrollBehavior),
+            .nestedScroll(nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
-                modifier = Modifier.padding(bottom = if (isMainTabRoute) 88.dp else 16.dp)
+                modifier = Modifier.padding(bottom = if (isMainTabRoute) 96.dp else 16.dp)
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
@@ -221,114 +297,164 @@ fun MainScaffold(
 
             if (isMainTabRoute) {
                 val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                HorizontalFloatingToolbar(
-                    expanded = true,
-                    floatingActionButton = {
-                        FloatingToolbarDefaults.VibrantFloatingActionButton(
-                            onClick = {
-                                navController.navigate(AppRoute.GlobalSearchRoute())
+                val verticalOffset by animateDpAsState(
+                    targetValue = if (isNavBarVisible) 0.dp else 120.dp,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "SpringNavBarVisibilityOffset"
+                )
+
+                SpringFloatingNavBar(
+                    tabs = MainNavTab.entries,
+                    selectedIndex = activeTab.ordinal,
+                    onSelectTab = { item ->
+                        item.activeAppTab?.let { appViewModel.setActiveTab(it) }
+                        val targetRoute: AppRoute = when (item) {
+                            MainNavTab.BIBLE -> AppRoute.BibleReaderRoute()
+                            MainNavTab.SONGS -> AppRoute.SongsRoute()
+                            MainNavTab.BOOKMARKS -> AppRoute.BookmarksRoute
+                            MainNavTab.SEARCH -> AppRoute.GlobalSearchRoute()
+                        }
+                        navController.navigate(targetRoute) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
                             }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Search,
-                                contentDescription = "Buscador Universal"
-                            )
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = -FloatingToolbarDefaults.ScreenOffset - navBarBottomPadding),
-                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                        toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    contentPadding = FloatingToolbarDefaults.ContentPadding,
-                    scrollBehavior = scrollBehavior,
-                    shape = FloatingToolbarDefaults.ContainerShape,
-                    floatingActionButtonPosition = FloatingToolbarHorizontalFabPosition.End
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MainToolbarTab.entries.forEach { item ->
-                            val selected = item.tab == activeTab
-                            MainToolbarTabPill(
-                                label = item.label,
-                                icon = item.icon,
-                                selected = selected,
-                                onClick = {
-                                    appViewModel.setActiveTab(item.tab)
-                                    val targetRoute: AppRoute = when (item.tab) {
-                                        ActiveAppTab.BIBLE -> AppRoute.BibleReaderRoute()
-                                        ActiveAppTab.SONGS -> AppRoute.SongsRoute()
-                                        ActiveAppTab.BOOKMARKS -> AppRoute.BookmarksRoute
-                                    }
-                                    navController.navigate(targetRoute) {
-                                        popUpTo(navController.graph.startDestinationId) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 14.dp + navBarBottomPadding)
+                        .offset(y = verticalOffset)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MainToolbarTabPill(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun SpringFloatingNavBar(
+    tabs: List<MainNavTab>,
+    selectedIndex: Int,
+    onSelectTab: (MainNavTab) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
 
-    val cornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 14.dp else 24.dp,
-        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "MainToolbarTabCornerMorph"
+    val targetPillColor = when (tabs[selectedIndex]) {
+        MainNavTab.BIBLE -> MaterialTheme.colorScheme.primaryContainer
+        MainNavTab.SONGS -> MaterialTheme.colorScheme.secondaryContainer
+        MainNavTab.BOOKMARKS -> MaterialTheme.colorScheme.tertiaryContainer
+        MainNavTab.SEARCH -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val targetContentColor = when (tabs[selectedIndex]) {
+        MainNavTab.BIBLE -> MaterialTheme.colorScheme.onPrimaryContainer
+        MainNavTab.SONGS -> MaterialTheme.colorScheme.onSecondaryContainer
+        MainNavTab.BOOKMARKS -> MaterialTheme.colorScheme.onTertiaryContainer
+        MainNavTab.SEARCH -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
+    val animatedPillColor by animateColorAsState(
+        targetValue = targetPillColor,
+        animationSpec = spring(stiffness = 450f, dampingRatio = Spring.DampingRatioNoBouncy),
+        label = "SpringNavBarPillColor"
     )
 
     Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .height(48.dp)
-            .semantics { role = Role.Tab },
-        shape = RoundedCornerShape(cornerRadius),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-        interactionSource = interactionSource
+        modifier = modifier
+            .fillMaxWidth()
+            .height(68.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+        border = BorderStroke(
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        )
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize()
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
+            val itemWidth = maxWidth / tabs.size
+            val pillOffsetX by animateDpAsState(
+                targetValue = itemWidth * selectedIndex,
+                animationSpec = spring(
+                    dampingRatio = 0.72f,
+                    stiffness = 450f
+                ),
+                label = "SpringNavBarPillSlide"
             )
-            Text(
-                text = label,
-                style = if (selected) {
-                    MaterialTheme.typography.labelLargeEmphasized
-                } else {
-                    MaterialTheme.typography.labelLarge
+
+            // Sliding spring-physics pill indicator
+            Box(
+                modifier = Modifier
+                    .offset(x = pillOffsetX + 6.dp)
+                    .padding(vertical = 6.dp)
+                    .width(itemWidth - 12.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(animatedPillColor)
+            )
+
+            // Touch & icon/label layer
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEachIndexed { index, item ->
+                    val selected = index == selectedIndex
+                    val itemColor by animateColorAsState(
+                        targetValue = if (selected) {
+                            targetContentColor
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        animationSpec = spring(stiffness = 450f),
+                        label = "SpringNavBarItemColor"
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(24.dp))
+                            .semantics { role = Role.Tab }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelectTab(item)
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
+                            contentDescription = item.label,
+                            tint = itemColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = item.label,
+                            color = itemColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = if (selected) {
+                                MaterialTheme.typography.labelMediumEmphasized
+                            } else {
+                                MaterialTheme.typography.labelMedium
+                            }
+                        )
+                    }
                 }
-            )
+            }
         }
     }
 }
