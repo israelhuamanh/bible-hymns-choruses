@@ -4,8 +4,11 @@ package com.huaman.bible_hymns_choruses.presentation.home
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -233,7 +236,11 @@ fun MainScaffold(
         ) {
             NavHost(
                 navController = navController,
-                startDestination = AppRoute.BibleReaderRoute()
+                startDestination = AppRoute.BibleReaderRoute(),
+                enterTransition = { fadeIn(animationSpec = tween(140)) },
+                exitTransition = { fadeOut(animationSpec = tween(100)) },
+                popEnterTransition = { fadeIn(animationSpec = tween(140)) },
+                popExitTransition = { fadeOut(animationSpec = tween(100)) }
             ) {
                 composable<AppRoute.BibleReaderRoute> { entry ->
                     val route = entry.toRoute<AppRoute.BibleReaderRoute>()
@@ -297,8 +304,9 @@ fun MainScaffold(
 
             if (isMainTabRoute) {
                 val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                val verticalOffset by animateDpAsState(
-                    targetValue = if (isNavBarVisible) 0.dp else 120.dp,
+                val hiddenOffsetPx = with(density) { 120.dp.toPx() }
+                val verticalOffsetPx by animateFloatAsState(
+                    targetValue = if (isNavBarVisible) 0f else hiddenOffsetPx,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
                         stiffness = Spring.StiffnessMediumLow
@@ -329,7 +337,7 @@ fun MainScaffold(
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 14.dp + navBarBottomPadding)
-                        .offset(y = verticalOffset)
+                        .graphicsLayer { translationY = verticalOffsetPx }
                 )
             }
         }
@@ -380,9 +388,12 @@ private fun SpringFloatingNavBar(
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize()
         ) {
+            val density = LocalDensity.current
             val itemWidth = maxWidth / tabs.size
-            val pillOffsetX by animateDpAsState(
-                targetValue = itemWidth * selectedIndex,
+            val itemWidthPx = with(density) { itemWidth.toPx() }
+            val pillMarginPx = with(density) { 6.dp.toPx() }
+            val pillOffsetPx by animateFloatAsState(
+                targetValue = itemWidthPx * selectedIndex,
                 animationSpec = spring(
                     dampingRatio = 0.72f,
                     stiffness = 450f
@@ -390,10 +401,10 @@ private fun SpringFloatingNavBar(
                 label = "SpringNavBarPillSlide"
             )
 
-            // Sliding spring-physics pill indicator
+            // Sliding spring-physics pill indicator (GPU-accelerated, zero relayout)
             Box(
                 modifier = Modifier
-                    .offset(x = pillOffsetX + 6.dp)
+                    .graphicsLayer { translationX = pillOffsetPx + pillMarginPx }
                     .padding(vertical = 6.dp)
                     .width(itemWidth - 12.dp)
                     .fillMaxHeight()
