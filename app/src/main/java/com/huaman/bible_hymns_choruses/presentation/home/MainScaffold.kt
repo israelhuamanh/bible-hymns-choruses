@@ -2,18 +2,15 @@
 
 package com.huaman.bible_hymns_choruses.presentation.home
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -62,14 +59,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -80,6 +81,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.huaman.bible_hymns_choruses.core.datastore.ActiveAppTab
+import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
@@ -96,6 +98,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -108,6 +112,15 @@ class MainAppViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = UserPreferences()
+        )
+
+    val themeMode: StateFlow<ThemeMode> = userPreferencesRepository.userPreferencesFlow
+        .map { it.themeMode }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = ThemeMode.SYSTEM
         )
 
     fun setActiveTab(tab: ActiveAppTab) {
@@ -154,8 +167,6 @@ fun MainScaffold(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // Hoisted above AnimatedContent so switching tabs never recreates ViewModels,
-    // re-queries Room, or drops scroll positions (matches Koda's zero-lag tab model).
     val bibleViewModel: BibleReaderViewModel = hiltViewModel()
     val songsViewModel: SongsViewModel = hiltViewModel()
     val bookmarksViewModel: BookmarksViewModel = hiltViewModel()
@@ -164,8 +175,12 @@ fun MainScaffold(
     val bookmarksListState = rememberLazyListState()
 
     var activeTab by rememberSaveable { mutableStateOf(ActiveAppTab.BIBLE) }
+    var visitedTabs by remember { mutableStateOf(setOf(ActiveAppTab.BIBLE)) }
 
     LaunchedEffect(activeTab) {
+        if (activeTab !in visitedTabs) {
+            visitedTabs = visitedTabs + activeTab
+        }
         appViewModel.setActiveTab(activeTab)
     }
 
@@ -211,50 +226,43 @@ fun MainScaffold(
                 popExitTransition = { fadeOut(animationSpec = tween(100)) }
             ) {
                 composable<AppRoute.BibleReaderRoute> {
-                    val tabOrder = remember { MainToolbarTab.entries.map { it.tab } }
-                    AnimatedContent(
-                        targetState = activeTab,
-                        label = "MainTabTransition",
-                        transitionSpec = {
-                            val initialIndex = tabOrder.indexOf(initialState)
-                            val targetIndex = tabOrder.indexOf(targetState)
-                            if (targetIndex > initialIndex) {
-                                (slideInHorizontally(animationSpec = tween(220)) { width -> width / 4 } +
-                                    fadeIn(animationSpec = tween(180))) togetherWith
-                                    (slideOutHorizontally(animationSpec = tween(180)) { width -> -width / 6 } +
-                                        fadeOut(animationSpec = tween(140)))
-                            } else {
-                                (slideInHorizontally(animationSpec = tween(220)) { width -> -width / 4 } +
-                                    fadeIn(animationSpec = tween(180))) togetherWith
-                                    (slideOutHorizontally(animationSpec = tween(180)) { width -> width / 6 } +
-                                        fadeOut(animationSpec = tween(140)))
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Keep each visited tab mounted and switch via GPU alpha + zIndex
+                        // so tab switches do zero screen recomposition during the navbar spring.
+                        if (ActiveAppTab.BIBLE in visitedTabs) {
+                            KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.BIBLE) {
+                                BibleReaderScreen(
+                                    onShowSnackbar = showSnackbar,
+                                    listState = bibleListState,
+                                    viewModel = bibleViewModel
+                                )
                             }
                         }
-                    ) { tab ->
-                        when (tab) {
-                            ActiveAppTab.BIBLE -> BibleReaderScreen(
-                                onShowSnackbar = showSnackbar,
-                                listState = bibleListState,
-                                viewModel = bibleViewModel
-                            )
 
-                            ActiveAppTab.SONGS -> SongsScreen(
-                                onNavigateToDetail = { songId ->
-                                    navController.navigate(AppRoute.SongDetailRoute(songId))
-                                },
-                                onShowSnackbar = showSnackbar,
-                                listState = songsListState,
-                                viewModel = songsViewModel
-                            )
+                        if (ActiveAppTab.SONGS in visitedTabs) {
+                            KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.SONGS) {
+                                SongsScreen(
+                                    onNavigateToDetail = { songId ->
+                                        navController.navigate(AppRoute.SongDetailRoute(songId))
+                                    },
+                                    onShowSnackbar = showSnackbar,
+                                    listState = songsListState,
+                                    viewModel = songsViewModel
+                                )
+                            }
+                        }
 
-                            ActiveAppTab.BOOKMARKS -> BookmarksScreen(
-                                onOpenSongDetail = { songId ->
-                                    navController.navigate(AppRoute.SongDetailRoute(songId))
-                                },
-                                onShowSnackbar = showSnackbar,
-                                listState = bookmarksListState,
-                                viewModel = bookmarksViewModel
-                            )
+                        if (ActiveAppTab.BOOKMARKS in visitedTabs) {
+                            KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.BOOKMARKS) {
+                                BookmarksScreen(
+                                    onOpenSongDetail = { songId ->
+                                        navController.navigate(AppRoute.SongDetailRoute(songId))
+                                    },
+                                    onShowSnackbar = showSnackbar,
+                                    listState = bookmarksListState,
+                                    viewModel = bookmarksViewModel
+                                )
+                            }
                         }
                     }
                 }
@@ -356,6 +364,41 @@ fun MainScaffold(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun KeepAliveTabContainer(
+    isActive: Boolean,
+    content: @Composable () -> Unit
+) {
+    val alpha by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "KeepAliveTabAlpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(if (isActive) 1f else 0f)
+            .graphicsLayer { this.alpha = alpha }
+            .then(
+                if (!isActive) {
+                    Modifier.pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        content()
     }
 }
 

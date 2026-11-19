@@ -63,9 +63,16 @@ class BibleReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            userPreferencesRepository.userPreferencesFlow.collect { prefs ->
-                _uiState.update { it.copy(preferences = prefs) }
-            }
+            userPreferencesRepository.userPreferencesFlow
+                .distinctUntilChanged { old, new ->
+                    old.fontSizeSp == new.fontSizeSp &&
+                        old.fontWeight == new.fontWeight &&
+                        old.fontGrade == new.fontGrade &&
+                        old.themeMode == new.themeMode
+                }
+                .collect { prefs ->
+                    _uiState.update { it.copy(preferences = prefs) }
+                }
         }
     }
 

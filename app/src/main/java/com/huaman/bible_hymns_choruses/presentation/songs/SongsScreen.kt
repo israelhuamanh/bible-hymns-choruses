@@ -238,10 +238,12 @@ private fun SongSummaryCard(
     song: SongSummary,
     onClick: () -> Unit
 ) {
-    val badgeShape = if (song.type == SongType.HYMN) {
-        MaterialShapes.Clover4Leaf.toShape()
-    } else {
-        MaterialShapes.Cookie9Sided.toShape()
+    val badgeShape = androidx.compose.runtime.remember(song.type) {
+        if (song.type == SongType.HYMN) {
+            MaterialShapes.Clover4Leaf.toShape()
+        } else {
+            MaterialShapes.Cookie9Sided.toShape()
+        }
     }
 
     Card(
