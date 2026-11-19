@@ -4,9 +4,14 @@
 # For more details, see
 #   https://d.android.com/r/tools/r8/keep-rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Navigation Compose type-safe @Serializable routes and their serializers
+-keep,includedescriptorclasses class com.huaman.bible_hymns_choruses.core.navigation.** { *; }
+
+# Keep DataStore enum names used with valueOf()
+-keepclassmembers enum com.huaman.bible_hymns_choruses.core.datastore.** {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Keep Room database, entities, and DAOs
+-keep class com.huaman.bible_hymns_choruses.data.local.** { *; }
