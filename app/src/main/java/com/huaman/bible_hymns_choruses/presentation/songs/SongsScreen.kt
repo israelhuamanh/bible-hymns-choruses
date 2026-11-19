@@ -67,6 +67,7 @@ fun SongsScreen(
     onNavigateToDetail: (Int) -> Unit,
     onShowSnackbar: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     viewModel: SongsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -213,6 +214,7 @@ fun SongsScreen(
 
         // Lightweight SongSummary LazyColumn (120 fps scrolling)
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 128.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)

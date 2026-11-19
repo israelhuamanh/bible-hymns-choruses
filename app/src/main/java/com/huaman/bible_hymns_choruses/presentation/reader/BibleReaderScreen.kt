@@ -95,11 +95,11 @@ fun BibleReaderScreen(
     highlightVerse: Int? = null,
     onShowSnackbar: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
     viewModel: BibleReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
-    val listState = rememberLazyListState()
 
     LaunchedEffect(initialBookId, initialChapter, highlightVerse) {
         if (initialBookId != null && initialChapter != null) {

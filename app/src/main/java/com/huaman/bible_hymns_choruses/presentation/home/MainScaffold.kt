@@ -2,15 +2,18 @@
 
 package com.huaman.bible_hymns_choruses.presentation.home
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -48,9 +52,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -76,10 +84,14 @@ import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksScreen
+import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksViewModel
+import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderIntent
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderScreen
+import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderViewModel
 import com.huaman.bible_hymns_choruses.presentation.search.GlobalSearchScreen
 import com.huaman.bible_hymns_choruses.presentation.songs.SongDetailScreen
 import com.huaman.bible_hymns_choruses.presentation.songs.SongsScreen
+import com.huaman.bible_hymns_choruses.presentation.songs.SongsViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -142,6 +154,21 @@ fun MainScaffold(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
+    // Hoisted above AnimatedContent so switching tabs never recreates ViewModels,
+    // re-queries Room, or drops scroll positions (matches Koda's zero-lag tab model).
+    val bibleViewModel: BibleReaderViewModel = hiltViewModel()
+    val songsViewModel: SongsViewModel = hiltViewModel()
+    val bookmarksViewModel: BookmarksViewModel = hiltViewModel()
+    val bibleListState = rememberLazyListState()
+    val songsListState = rememberLazyListState()
+    val bookmarksListState = rememberLazyListState()
+
+    var activeTab by rememberSaveable { mutableStateOf(ActiveAppTab.BIBLE) }
+
+    LaunchedEffect(activeTab) {
+        appViewModel.setActiveTab(activeTab)
+    }
+
     val showSnackbar: (String) -> Unit = remember(snackbarHostState) {
         { msg ->
             coroutineScope.launch {
@@ -151,17 +178,7 @@ fun MainScaffold(
         }
     }
 
-    val isMainTabRoute = currentDestination?.let { dest ->
-        dest.hasRoute<AppRoute.BibleReaderRoute>() ||
-            dest.hasRoute<AppRoute.SongsRoute>() ||
-            dest.hasRoute<AppRoute.BookmarksRoute>()
-    } ?: true
-
-    val activeTab = when {
-        currentDestination?.hasRoute<AppRoute.SongsRoute>() == true -> ActiveAppTab.SONGS
-        currentDestination?.hasRoute<AppRoute.BookmarksRoute>() == true -> ActiveAppTab.BOOKMARKS
-        else -> ActiveAppTab.BIBLE
-    }
+    val isMainTabRoute = currentDestination?.hasRoute<AppRoute.BibleReaderRoute>() ?: true
 
     val scrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
         exitDirection = FloatingToolbarExitDirection.Bottom
@@ -193,23 +210,53 @@ fun MainScaffold(
                 popEnterTransition = { fadeIn(animationSpec = tween(140)) },
                 popExitTransition = { fadeOut(animationSpec = tween(100)) }
             ) {
-                composable<AppRoute.BibleReaderRoute> { entry ->
-                    val route = entry.toRoute<AppRoute.BibleReaderRoute>()
-                    BibleReaderScreen(
-                        initialBookId = route.bookId.takeIf { it > 0 && route.highlightVerse != null },
-                        initialChapter = route.chapter.takeIf { it > 0 && route.highlightVerse != null },
-                        highlightVerse = route.highlightVerse,
-                        onShowSnackbar = showSnackbar
-                    )
-                }
+                composable<AppRoute.BibleReaderRoute> {
+                    val tabOrder = remember { MainToolbarTab.entries.map { it.tab } }
+                    AnimatedContent(
+                        targetState = activeTab,
+                        label = "MainTabTransition",
+                        transitionSpec = {
+                            val initialIndex = tabOrder.indexOf(initialState)
+                            val targetIndex = tabOrder.indexOf(targetState)
+                            if (targetIndex > initialIndex) {
+                                (slideInHorizontally(animationSpec = tween(220)) { width -> width / 4 } +
+                                    fadeIn(animationSpec = tween(180))) togetherWith
+                                    (slideOutHorizontally(animationSpec = tween(180)) { width -> -width / 6 } +
+                                        fadeOut(animationSpec = tween(140)))
+                            } else {
+                                (slideInHorizontally(animationSpec = tween(220)) { width -> -width / 4 } +
+                                    fadeIn(animationSpec = tween(180))) togetherWith
+                                    (slideOutHorizontally(animationSpec = tween(180)) { width -> width / 6 } +
+                                        fadeOut(animationSpec = tween(140)))
+                            }
+                        }
+                    ) { tab ->
+                        when (tab) {
+                            ActiveAppTab.BIBLE -> BibleReaderScreen(
+                                onShowSnackbar = showSnackbar,
+                                listState = bibleListState,
+                                viewModel = bibleViewModel
+                            )
 
-                composable<AppRoute.SongsRoute> {
-                    SongsScreen(
-                        onNavigateToDetail = { songId ->
-                            navController.navigate(AppRoute.SongDetailRoute(songId))
-                        },
-                        onShowSnackbar = showSnackbar
-                    )
+                            ActiveAppTab.SONGS -> SongsScreen(
+                                onNavigateToDetail = { songId ->
+                                    navController.navigate(AppRoute.SongDetailRoute(songId))
+                                },
+                                onShowSnackbar = showSnackbar,
+                                listState = songsListState,
+                                viewModel = songsViewModel
+                            )
+
+                            ActiveAppTab.BOOKMARKS -> BookmarksScreen(
+                                onOpenSongDetail = { songId ->
+                                    navController.navigate(AppRoute.SongDetailRoute(songId))
+                                },
+                                onShowSnackbar = showSnackbar,
+                                listState = bookmarksListState,
+                                viewModel = bookmarksViewModel
+                            )
+                        }
+                    }
                 }
 
                 composable<AppRoute.SongDetailRoute> { entry ->
@@ -221,30 +268,21 @@ fun MainScaffold(
                     )
                 }
 
-                composable<AppRoute.BookmarksRoute> {
-                    BookmarksScreen(
-                        onOpenSongDetail = { songId ->
-                            navController.navigate(AppRoute.SongDetailRoute(songId))
-                        },
-                        onShowSnackbar = showSnackbar
-                    )
-                }
-
                 composable<AppRoute.GlobalSearchRoute> { entry ->
                     val route = entry.toRoute<AppRoute.GlobalSearchRoute>()
                     GlobalSearchScreen(
                         initialQuery = route.initialQuery,
                         onNavigateBack = { navController.popBackStack() },
                         onOpenBiblePassage = { bookId, chapter, verse ->
-                            navController.navigate(
-                                AppRoute.BibleReaderRoute(
+                            bibleViewModel.onIntent(
+                                BibleReaderIntent.SelectLocation(
                                     bookId = bookId,
                                     chapter = chapter,
                                     highlightVerse = verse
                                 )
-                            ) {
-                                popUpTo<AppRoute.BibleReaderRoute> { inclusive = true }
-                            }
+                            )
+                            activeTab = ActiveAppTab.BIBLE
+                            navController.popBackStack()
                         },
                         onOpenSongDetail = { songId ->
                             navController.navigate(AppRoute.SongDetailRoute(songId))
@@ -256,20 +294,12 @@ fun MainScaffold(
             if (isMainTabRoute) {
                 val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 val hapticFeedback = LocalHapticFeedback.current
-                val navigateToTab: (ActiveAppTab) -> Unit = { targetTab ->
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    appViewModel.setActiveTab(targetTab)
-                    val targetRoute: AppRoute = when (targetTab) {
-                        ActiveAppTab.BIBLE -> AppRoute.BibleReaderRoute()
-                        ActiveAppTab.SONGS -> AppRoute.SongsRoute()
-                        ActiveAppTab.BOOKMARKS -> AppRoute.BookmarksRoute
-                    }
-                    navController.navigate(targetRoute) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
+                val selectTab: (ActiveAppTab) -> Unit = remember(hapticFeedback) {
+                    { targetTab ->
+                        if (targetTab != activeTab) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            activeTab = targetTab
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 }
                 val navScrub = rememberNavBarScrubState(
@@ -277,11 +307,7 @@ fun MainScaffold(
                     onHoverChange = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     },
-                    onCommit = { targetTab ->
-                        if (targetTab != activeTab) {
-                            navigateToTab(targetTab)
-                        }
-                    }
+                    onCommit = selectTab
                 )
 
                 HorizontalFloatingToolbar(
@@ -322,7 +348,7 @@ fun MainScaffold(
                                 selectedIcon = item.selectedIcon,
                                 unselectedIcon = item.unselectedIcon,
                                 selected = selected,
-                                onClick = { navigateToTab(item.tab) },
+                                onClick = { selectTab(item.tab) },
                                 modifier = Modifier.navBarScrubItem(navScrub, item.tab)
                             )
                         }
@@ -385,11 +411,7 @@ private fun MainToolbarTabPill(
         interactionSource = interactionSource
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = animatedPadding)
-                .animateContentSize(
-                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
-                ),
+            modifier = Modifier.padding(horizontal = animatedPadding),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -400,10 +422,10 @@ private fun MainToolbarTabPill(
             )
             AnimatedVisibility(
                 visible = selected,
-                enter = fadeIn() + expandHorizontally(
+                enter = fadeIn(animationSpec = tween(durationMillis = 150)) + expandHorizontally(
                     animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
                 ),
-                exit = fadeOut() + shrinkHorizontally(
+                exit = fadeOut(animationSpec = tween(durationMillis = 120)) + shrinkHorizontally(
                     animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
                 )
             ) {
