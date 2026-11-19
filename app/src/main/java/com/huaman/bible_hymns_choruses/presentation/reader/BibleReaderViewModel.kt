@@ -287,6 +287,12 @@ class BibleReaderViewModel @Inject constructor(
                     userPreferencesRepository.updateTypographySettings(fontGrade = intent.grade)
                 }
             }
+
+            is BibleReaderIntent.UpdateThemeMode -> {
+                viewModelScope.launch {
+                    userPreferencesRepository.updateThemeMode(intent.themeMode)
+                }
+            }
         }
     }
 

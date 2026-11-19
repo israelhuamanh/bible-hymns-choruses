@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,10 +39,13 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -82,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
 import com.huaman.bible_hymns_choruses.domain.model.Testament
@@ -216,7 +221,8 @@ fun BibleReaderScreen(
                 slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it / 2 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp, vertical = 104.dp)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp)
         ) {
             VerseSelectionActionBar(
                 selectedCount = uiState.selectedVerseIds.size,
@@ -242,15 +248,13 @@ fun BibleReaderScreen(
         )
     }
 
-    // Live Typography Settings Sheet (Google Sans Flex Size, Weight, Grade)
+    // Personalization Sheet (Font Size & Light/Dark Theme)
     if (uiState.isTypographySheetVisible) {
-        TypographySettingsSheet(
+        PersonalizationSettingsSheet(
             fontSizeSp = uiState.preferences.fontSizeSp,
-            fontWeight = uiState.preferences.fontWeight,
-            fontGrade = uiState.preferences.fontGrade,
+            themeMode = uiState.preferences.themeMode,
             onUpdateFontSize = { viewModel.onIntent(BibleReaderIntent.UpdateFontSize(it)) },
-            onUpdateFontWeight = { viewModel.onIntent(BibleReaderIntent.UpdateFontWeight(it)) },
-            onUpdateFontGrade = { viewModel.onIntent(BibleReaderIntent.UpdateFontGrade(it)) },
+            onUpdateThemeMode = { viewModel.onIntent(BibleReaderIntent.UpdateThemeMode(it)) },
             onDismiss = { viewModel.onIntent(BibleReaderIntent.ToggleTypographySheet(false)) }
         )
     }
@@ -326,8 +330,8 @@ private fun BibleReaderTopHeader(
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.FormatSize,
-                        contentDescription = "Ajustar tipografía"
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = "Personalización"
                     )
                 }
             }
@@ -466,7 +470,7 @@ private fun ChapterNavigationButtonGroup(
                 pressedShape = IconButtonDefaults.smallPressedShape
             )
         ) {
-            Icon(Icons.Rounded.FormatSize, contentDescription = "Tipografía")
+            Icon(Icons.Rounded.Tune, contentDescription = "Personalización")
         }
 
         Button(
@@ -494,8 +498,10 @@ private fun VerseSelectionActionBar(
 ) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.inverseSurface,
-        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        tonalElevation = 4.dp,
         shadowElevation = 6.dp
     ) {
         Row(
@@ -506,6 +512,7 @@ private fun VerseSelectionActionBar(
             Text(
                 text = "$selectedCount sel.",
                 style = MaterialTheme.typography.labelLargeEmphasized,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
             FilledTonalButton(
@@ -702,13 +709,11 @@ private fun BookChapterPickerSheet(
 }
 
 @Composable
-private fun TypographySettingsSheet(
+private fun PersonalizationSettingsSheet(
     fontSizeSp: Float,
-    fontWeight: Int,
-    fontGrade: Int,
+    themeMode: ThemeMode,
     onUpdateFontSize: (Float) -> Unit,
-    onUpdateFontWeight: (Int) -> Unit,
-    onUpdateFontGrade: (Int) -> Unit,
+    onUpdateThemeMode: (ThemeMode) -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -720,10 +725,10 @@ private fun TypographySettingsSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text(
-                text = "Tipografía Google Sans Flex",
+                text = "Personalización",
                 style = MaterialTheme.typography.headlineSmallEmphasized
             )
 
@@ -734,13 +739,16 @@ private fun TypographySettingsSheet(
             ) {
                 Text(
                     text = "Lámpara es a mis pies tu palabra, y lumbrera a mi camino.",
-                    style = readerBodyTextStyle(fontSizeSp, fontWeight, fontGrade),
+                    style = readerBodyTextStyle(fontSizeSp = fontSizeSp),
                     modifier = Modifier.padding(16.dp)
                 )
             }
 
-            Column {
-                Text("Tamaño: ${fontSizeSp.roundToInt()} sp", style = MaterialTheme.typography.labelLargeEmphasized)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Tamaño de letra: ${fontSizeSp.roundToInt()} sp",
+                    style = MaterialTheme.typography.titleSmallEmphasized
+                )
                 Slider(
                     value = fontSizeSp,
                     onValueChange = onUpdateFontSize,
@@ -748,23 +756,47 @@ private fun TypographySettingsSheet(
                 )
             }
 
-            Column {
-                Text("Grosor (Weight): $fontWeight", style = MaterialTheme.typography.labelLargeEmphasized)
-                Slider(
-                    value = fontWeight.toFloat(),
-                    onValueChange = { onUpdateFontWeight(it.roundToInt()) },
-                    valueRange = 400f..700f,
-                    steps = 2
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Tema",
+                    style = MaterialTheme.typography.titleSmallEmphasized
                 )
-            }
-
-            Column {
-                Text("Grado (Grade): $fontGrade", style = MaterialTheme.typography.labelLargeEmphasized)
-                Slider(
-                    value = fontGrade.toFloat(),
-                    onValueChange = { onUpdateFontGrade(it.roundToInt()) },
-                    valueRange = -50f..150f
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val themeOptions = listOf(
+                        Triple(ThemeMode.SYSTEM, "Auto", Icons.Rounded.BrightnessAuto),
+                        Triple(ThemeMode.LIGHT, "Claro", Icons.Rounded.LightMode),
+                        Triple(ThemeMode.DARK, "Oscuro", Icons.Rounded.DarkMode)
+                    )
+                    themeOptions.forEach { (mode, label, icon) ->
+                        val checked = themeMode == mode
+                        ToggleButton(
+                            checked = checked,
+                            onCheckedChange = { onUpdateThemeMode(mode) },
+                            shapes = ToggleButtonDefaults.shapesFor(ToggleButtonDefaults.MinHeight),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                style = if (checked) {
+                                    MaterialTheme.typography.labelLargeEmphasized
+                                } else {
+                                    MaterialTheme.typography.labelLarge
+                                },
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.huaman.bible_hymns_choruses.presentation.reader
 
 import androidx.compose.runtime.Immutable
+import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
@@ -43,6 +44,7 @@ sealed interface BibleReaderIntent {
     data class UpdateFontSize(val sizeSp: Float) : BibleReaderIntent
     data class UpdateFontWeight(val weight: Int) : BibleReaderIntent
     data class UpdateFontGrade(val grade: Int) : BibleReaderIntent
+    data class UpdateThemeMode(val themeMode: ThemeMode) : BibleReaderIntent
 }
 
 sealed interface BibleReaderEffect {
