@@ -213,6 +213,8 @@ fun SongsScreen(
         }
 
         // Lightweight SongSummary LazyColumn (120 fps scrolling)
+        val hymnBadgeShape = MaterialShapes.Clover4Leaf.toShape()
+        val chorusBadgeShape = MaterialShapes.Cookie9Sided.toShape()
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
@@ -226,6 +228,7 @@ fun SongsScreen(
             ) { song ->
                 SongSummaryCard(
                     song = song,
+                    badgeShape = if (song.type == SongType.HYMN) hymnBadgeShape else chorusBadgeShape,
                     onClick = { onNavigateToDetail(song.id) }
                 )
             }
@@ -236,15 +239,9 @@ fun SongsScreen(
 @Composable
 private fun SongSummaryCard(
     song: SongSummary,
+    badgeShape: androidx.compose.ui.graphics.Shape,
     onClick: () -> Unit
 ) {
-    val badgeShape = androidx.compose.runtime.remember(song.type) {
-        if (song.type == SongType.HYMN) {
-            MaterialShapes.Clover4Leaf.toShape()
-        } else {
-            MaterialShapes.Cookie9Sided.toShape()
-        }
-    }
 
     Card(
         onClick = onClick,
