@@ -2,15 +2,21 @@
 
 package com.huaman.bible_hymns_choruses.presentation.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,9 +25,13 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
@@ -45,7 +55,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -96,11 +108,27 @@ class MainAppViewModel @Inject constructor(
 private enum class MainToolbarTab(
     val tab: ActiveAppTab,
     val label: String,
-    val icon: ImageVector
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector
 ) {
-    BIBLE(ActiveAppTab.BIBLE, "Biblia", Icons.AutoMirrored.Rounded.MenuBook),
-    SONGS(ActiveAppTab.SONGS, "Cantos", Icons.Rounded.LibraryMusic),
-    BOOKMARKS(ActiveAppTab.BOOKMARKS, "Guardados", Icons.Rounded.Bookmark)
+    BIBLE(
+        tab = ActiveAppTab.BIBLE,
+        label = "Biblia",
+        selectedIcon = Icons.AutoMirrored.Rounded.MenuBook,
+        unselectedIcon = Icons.AutoMirrored.Outlined.MenuBook
+    ),
+    SONGS(
+        tab = ActiveAppTab.SONGS,
+        label = "Cantos",
+        selectedIcon = Icons.Rounded.LibraryMusic,
+        unselectedIcon = Icons.Outlined.LibraryMusic
+    ),
+    BOOKMARKS(
+        tab = ActiveAppTab.BOOKMARKS,
+        label = "Guardados",
+        selectedIcon = Icons.Rounded.Bookmark,
+        unselectedIcon = Icons.Outlined.BookmarkBorder
+    )
 }
 
 @Composable
@@ -227,6 +255,35 @@ fun MainScaffold(
 
             if (isMainTabRoute) {
                 val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                val hapticFeedback = LocalHapticFeedback.current
+                val navigateToTab: (ActiveAppTab) -> Unit = { targetTab ->
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    appViewModel.setActiveTab(targetTab)
+                    val targetRoute: AppRoute = when (targetTab) {
+                        ActiveAppTab.BIBLE -> AppRoute.BibleReaderRoute()
+                        ActiveAppTab.SONGS -> AppRoute.SongsRoute()
+                        ActiveAppTab.BOOKMARKS -> AppRoute.BookmarksRoute
+                    }
+                    navController.navigate(targetRoute) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+                val navScrub = rememberNavBarScrubState(
+                    tabIds = remember { MainToolbarTab.entries.map { it.tab } },
+                    onHoverChange = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    },
+                    onCommit = { targetTab ->
+                        if (targetTab != activeTab) {
+                            navigateToTab(targetTab)
+                        }
+                    }
+                )
+
                 HorizontalFloatingToolbar(
                     expanded = true,
                     floatingActionButton = {
@@ -254,30 +311,19 @@ fun MainScaffold(
                     floatingActionButtonPosition = FloatingToolbarHorizontalFabPosition.End
                 ) {
                     Row(
+                        modifier = Modifier.navBarScrub(navScrub),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         MainToolbarTab.entries.forEach { item ->
-                            val selected = item.tab == activeTab
+                            val selected = item.tab == (navScrub.hoveredTab ?: activeTab)
                             MainToolbarTabPill(
                                 label = item.label,
-                                icon = item.icon,
+                                selectedIcon = item.selectedIcon,
+                                unselectedIcon = item.unselectedIcon,
                                 selected = selected,
-                                onClick = {
-                                    appViewModel.setActiveTab(item.tab)
-                                    val targetRoute: AppRoute = when (item.tab) {
-                                        ActiveAppTab.BIBLE -> AppRoute.BibleReaderRoute()
-                                        ActiveAppTab.SONGS -> AppRoute.SongsRoute()
-                                        ActiveAppTab.BOOKMARKS -> AppRoute.BookmarksRoute
-                                    }
-                                    navController.navigate(targetRoute) {
-                                        popUpTo(navController.graph.startDestinationId) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
+                                onClick = { navigateToTab(item.tab) },
+                                modifier = Modifier.navBarScrubItem(navScrub, item.tab)
                             )
                         }
                     }
@@ -290,9 +336,11 @@ fun MainScaffold(
 @Composable
 private fun MainToolbarTabPill(
     label: String,
-    icon: ImageVector,
+    selectedIcon: ImageVector,
+    unselectedIcon: ImageVector,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -303,38 +351,72 @@ private fun MainToolbarTabPill(
         label = "MainToolbarTabCornerMorph"
     )
 
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .height(48.dp)
-            .semantics { role = Role.Tab },
-        shape = RoundedCornerShape(cornerRadius),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        contentColor = if (selected) {
+    val animatedPadding by animateDpAsState(
+        targetValue = if (selected) 20.dp else 12.dp,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "MainToolbarTabPadding"
+    )
+
+    val animatedContainerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "MainToolbarTabContainerColor"
+    )
+
+    val animatedContentColor by animateColorAsState(
+        targetValue = if (selected) {
             MaterialTheme.colorScheme.onPrimaryContainer
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
+        animationSpec = tween(durationMillis = 200),
+        label = "MainToolbarTabContentColor"
+    )
+
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        modifier = modifier
+            .height(48.dp)
+            .semantics { role = Role.Tab },
+        shape = RoundedCornerShape(cornerRadius),
+        color = animatedContainerColor,
+        contentColor = animatedContentColor,
         interactionSource = interactionSource
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .padding(horizontal = animatedPadding)
+                .animateContentSize(
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                ),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
+                imageVector = if (selected) selectedIcon else unselectedIcon,
+                contentDescription = if (selected) null else label,
+                modifier = Modifier.size(22.dp)
             )
-            Text(
-                text = label,
-                style = if (selected) {
-                    MaterialTheme.typography.labelLargeEmphasized
-                } else {
-                    MaterialTheme.typography.labelLarge
+            AnimatedVisibility(
+                visible = selected,
+                enter = fadeIn() + expandHorizontally(
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                ),
+                exit = fadeOut() + shrinkHorizontally(
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                )
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
-            )
+            }
         }
     }
 }
