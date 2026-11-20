@@ -18,11 +18,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,8 +37,6 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.FloatingToolbarExitDirection
-import androidx.compose.material3.FloatingToolbarHorizontalFabPosition
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -62,7 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -195,14 +191,8 @@ fun MainScaffold(
 
     val isMainTabRoute = currentDestination?.hasRoute<AppRoute.BibleReaderRoute>() ?: true
 
-    val scrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
-        exitDirection = FloatingToolbarExitDirection.Bottom
-    )
-
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior),
+        modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         snackbarHost = {
             SnackbarHost(
@@ -300,7 +290,6 @@ fun MainScaffold(
             }
 
             if (isMainTabRoute) {
-                val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 val hapticFeedback = LocalHapticFeedback.current
                 val selectTab: (ActiveAppTab) -> Unit = remember(hapticFeedback) {
                     { targetTab ->
@@ -318,9 +307,46 @@ fun MainScaffold(
                     onCommit = selectTab
                 )
 
-                HorizontalFloatingToolbar(
-                    expanded = true,
-                    floatingActionButton = {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = FloatingToolbarDefaults.ScreenOffset),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalFloatingToolbar(
+                            expanded = true,
+                            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                                toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            contentPadding = FloatingToolbarDefaults.ContentPadding,
+                            shape = FloatingToolbarDefaults.ContainerShape
+                        ) {
+                            Row(
+                                modifier = Modifier.navBarScrub(navScrub),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                MainToolbarTab.entries.forEach { item ->
+                                    val selected = item.tab == (navScrub.hoveredTab ?: activeTab)
+                                    MainToolbarTabPill(
+                                        label = item.label,
+                                        selectedIcon = item.selectedIcon,
+                                        unselectedIcon = item.unselectedIcon,
+                                        selected = selected,
+                                        onClick = { selectTab(item.tab) },
+                                        modifier = Modifier.navBarScrubItem(navScrub, item.tab)
+                                    )
+                                }
+                            }
+                        }
+
                         FloatingToolbarDefaults.VibrantFloatingActionButton(
                             onClick = {
                                 navController.navigate(AppRoute.GlobalSearchRoute())
@@ -329,35 +355,6 @@ fun MainScaffold(
                             Icon(
                                 imageVector = Icons.Rounded.Search,
                                 contentDescription = "Buscador Universal"
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = -FloatingToolbarDefaults.ScreenOffset - navBarBottomPadding),
-                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                        toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    contentPadding = FloatingToolbarDefaults.ContentPadding,
-                    scrollBehavior = scrollBehavior,
-                    shape = FloatingToolbarDefaults.ContainerShape,
-                    floatingActionButtonPosition = FloatingToolbarHorizontalFabPosition.End
-                ) {
-                    Row(
-                        modifier = Modifier.navBarScrub(navScrub),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MainToolbarTab.entries.forEach { item ->
-                            val selected = item.tab == (navScrub.hoveredTab ?: activeTab)
-                            MainToolbarTabPill(
-                                label = item.label,
-                                selectedIcon = item.selectedIcon,
-                                unselectedIcon = item.unselectedIcon,
-                                selected = selected,
-                                onClick = { selectTab(item.tab) },
-                                modifier = Modifier.navBarScrubItem(navScrub, item.tab)
                             )
                         }
                     }
