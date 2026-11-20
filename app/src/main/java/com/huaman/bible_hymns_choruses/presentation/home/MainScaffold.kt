@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -347,10 +348,13 @@ fun MainScaffold(
                             }
                         }
 
-                        FloatingToolbarDefaults.VibrantFloatingActionButton(
+                        FloatingActionButton(
                             onClick = {
                                 navController.navigate(AppRoute.GlobalSearchRoute())
-                            }
+                            },
+                            modifier = Modifier.size(56.dp),
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Search,
