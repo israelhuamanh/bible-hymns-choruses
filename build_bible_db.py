@@ -955,12 +955,7 @@ def build_database(
         CREATE INDEX idx_verses_ref ON verses(version_id, book_id, chapter, verse, verse_end);
         CREATE INDEX idx_verses_book_id ON verses(book_id);
 
-        CREATE VIRTUAL TABLE verses_fts USING fts4(
-            content="verses",
-            search_text,
-            tokenize=unicode61 "remove_diacritics=2",
-            prefix='2,3,4'
-        );
+        CREATE VIRTUAL TABLE `verses_fts` USING FTS4(`search_text` TEXT NOT NULL, tokenize=unicode61 `remove_diacritics=2`, content=`verses`, prefix=`2,3,4`);
 
         CREATE TABLE songs (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -976,14 +971,7 @@ def build_database(
 
         CREATE INDEX idx_songs_type_number ON songs(type, number);
 
-        CREATE VIRTUAL TABLE songs_fts USING fts4(
-            content="songs",
-            title,
-            lyrics,
-            search_text,
-            tokenize=unicode61 "remove_diacritics=2",
-            prefix='2,3,4'
-        );
+        CREATE VIRTUAL TABLE `songs_fts` USING FTS4(`title` TEXT NOT NULL, `lyrics` TEXT NOT NULL, `search_text` TEXT NOT NULL, tokenize=unicode61 `remove_diacritics=2`, content=`songs`, prefix=`2,3,4`);
         """
     )
 
@@ -1051,9 +1039,11 @@ def build_database(
         song_rows,
     )
 
-    # Rebuild FTS4 virtual tables, set Room user_version = 2, and optimize
+    # Rebuild FTS4 virtual tables, register Room v2 identity hash, and optimize
     cur.execute("INSERT INTO verses_fts(verses_fts) VALUES('rebuild');")
     cur.execute("INSERT INTO songs_fts(songs_fts) VALUES('rebuild');")
+    cur.execute("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT);")
+    cur.execute("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6a8f7b03e2bf91bf9284529fbba0389e');")
     cur.execute("PRAGMA user_version = 2;")
     conn.commit()
 

@@ -29,7 +29,7 @@ object DatabaseModule {
             BibleHymnsDatabase.DATABASE_NAME
         )
             .createFromAsset(BibleHymnsDatabase.ASSET_DATABASE_PATH)
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            .fallbackToDestructiveMigration(dropAllTables = false)
             .build()
     }
 

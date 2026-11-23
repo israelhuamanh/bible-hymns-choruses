@@ -28,7 +28,7 @@ abstract class BibleHymnsDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
 
     companion object {
-        const val DATABASE_NAME = "bible_hymns_choruses.db"
+        const val DATABASE_NAME = "bible_hymns_choruses_v2.db"
         const val ASSET_DATABASE_PATH = "database/bible_hymns_choruses.db"
     }
 }
