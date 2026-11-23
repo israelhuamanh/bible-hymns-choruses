@@ -17,22 +17,43 @@ import androidx.room.PrimaryKey
             childColumns = ["book_id"],
             onDelete = ForeignKey.CASCADE,
             onUpdate = ForeignKey.NO_ACTION
+        ),
+        ForeignKey(
+            entity = BibleVersionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["version_id"],
+            onDelete = ForeignKey.CASCADE,
+            onUpdate = ForeignKey.NO_ACTION
         )
     ],
     indices = [
-        Index(value = ["book_id", "chapter", "verse"], unique = true, name = "idx_verses_location")
+        Index(value = ["version_id", "book_id", "chapter", "item_order"], name = "idx_verses_location"),
+        Index(value = ["version_id", "book_id", "chapter", "verse", "verse_end"], name = "idx_verses_ref"),
+        Index(value = ["book_id"], name = "idx_verses_book_id")
     ]
 )
 data class VerseEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
     val id: Int,
+    @ColumnInfo(name = "version_id")
+    val versionId: String,
     @ColumnInfo(name = "book_id")
     val bookId: Int,
     @ColumnInfo(name = "chapter")
     val chapter: Int,
     @ColumnInfo(name = "verse")
     val verse: Int,
+    @ColumnInfo(name = "verse_end")
+    val verseEnd: Int,
+    @ColumnInfo(name = "verse_label")
+    val verseLabel: String,
+    @ColumnInfo(name = "item_order")
+    val itemOrder: Int,
+    @ColumnInfo(name = "heading")
+    val heading: String?,
+    @ColumnInfo(name = "label")
+    val label: String?,
     @ColumnInfo(name = "text")
     val text: String,
     @ColumnInfo(name = "search_text")
@@ -47,8 +68,6 @@ data class VerseEntity(
 )
 @Entity(tableName = "verses_fts")
 data class VerseFtsEntity(
-    @ColumnInfo(name = "text")
-    val text: String,
     @ColumnInfo(name = "search_text")
     val searchText: String
 )
@@ -58,11 +77,17 @@ data class VerseFtsEntity(
  */
 data class VerseWithBookProjection(
     val id: Int,
+    @ColumnInfo(name = "version_id")
+    val versionId: String,
     @ColumnInfo(name = "book_id")
     val bookId: Int,
     val bookName: String,
     val bookAbbr: String,
     val chapter: Int,
     val verse: Int,
+    @ColumnInfo(name = "verse_end")
+    val verseEnd: Int,
+    @ColumnInfo(name = "verse_label")
+    val verseLabel: String,
     val text: String
 )

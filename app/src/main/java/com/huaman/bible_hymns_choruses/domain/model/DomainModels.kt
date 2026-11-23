@@ -9,6 +9,15 @@ enum class Testament {
 }
 
 @Immutable
+data class BibleVersion(
+    val id: String,
+    val name: String,
+    val fullTitle: String,
+    val copyright: String,
+    val sortOrder: Int
+)
+
+@Immutable
 data class BibleBook(
     val id: Int,
     val testament: Testament,
@@ -20,20 +29,28 @@ data class BibleBook(
 @Immutable
 data class BibleVerse(
     val id: Int,
+    val versionId: String,
     val bookId: Int,
     val chapter: Int,
     val verse: Int,
+    val verseEnd: Int = verse,
+    val verseLabel: String = verse.toString(),
+    val heading: String? = null,
+    val label: String? = null,
     val text: String
 )
 
 @Immutable
 data class VerseSearchMatch(
     val id: Int,
+    val versionId: String,
     val bookId: Int,
     val bookName: String,
     val bookAbbr: String,
     val chapter: Int,
     val verse: Int,
+    val verseEnd: Int = verse,
+    val verseLabel: String = verse.toString(),
     val text: String
 )
 

@@ -27,7 +27,10 @@ class UnifiedSearchRepository @Inject constructor(
      * - Bible reference -> direct `idx_verses_location` lookup without hitting FTS4.
      * - Free text -> parallel FTS4 `MATCH` queries on `verses_fts` and `songs_fts`.
      */
-    suspend fun search(rawQuery: String): SmartSearchResult = withContext(Dispatchers.IO) {
+    suspend fun search(
+        rawQuery: String,
+        versionId: String = "RVR1960"
+    ): SmartSearchResult = withContext(Dispatchers.IO) {
         val books = bibleRepository.books.value
         val route = SmartQueryRouter.route(rawQuery, books)
 
@@ -36,7 +39,7 @@ class UnifiedSearchRepository @Inject constructor(
 
             is QueryRoute.PureNumber -> {
                 val directSongsDeferred = async { songRepository.getSongsByNumber(route.number) }
-                val ftsVersesDeferred = async { bibleRepository.searchVersesFts(rawQuery) }
+                val ftsVersesDeferred = async { bibleRepository.searchVersesFts(versionId, rawQuery) }
                 SmartSearchResult(
                     route = route,
                     directSongs = directSongsDeferred.await(),
@@ -46,6 +49,7 @@ class UnifiedSearchRepository @Inject constructor(
 
             is QueryRoute.BibleReference -> {
                 val verses = bibleRepository.getReferenceVerses(
+                    versionId = versionId,
                     bookId = route.book.id,
                     chapter = route.chapter,
                     startVerse = route.startVerse,
@@ -58,7 +62,9 @@ class UnifiedSearchRepository @Inject constructor(
             }
 
             is QueryRoute.FullText -> {
-                val ftsVersesDeferred = async { bibleRepository.searchVersesFts(route.normalizedQuery) }
+                val ftsVersesDeferred = async {
+                    bibleRepository.searchVersesFts(versionId, route.normalizedQuery)
+                }
                 val ftsSongsDeferred = async { songRepository.searchSongsFts(route.normalizedQuery) }
                 SmartSearchResult(
                     route = route,

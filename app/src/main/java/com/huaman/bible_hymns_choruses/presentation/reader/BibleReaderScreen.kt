@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.BrightnessAuto
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DarkMode
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -89,6 +91,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
+import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
 import com.huaman.bible_hymns_choruses.domain.model.Testament
 import com.huaman.bible_hymns_choruses.ui.theme.readerBodyTextStyle
 import kotlin.math.roundToInt
@@ -126,7 +129,9 @@ fun BibleReaderScreen(
                 }
                 is BibleReaderEffect.ShowMessage -> onShowSnackbar(effect.message)
                 is BibleReaderEffect.ScrollToVerse -> {
-                    val idx = uiState.verses.indexOfFirst { it.verse == effect.verseNumber }
+                    val idx = uiState.verses.indexOfFirst {
+                        it.verse <= effect.verseNumber && it.verseEnd >= effect.verseNumber
+                    }
                     if (idx >= 0) {
                         listState.animateScrollToItem(idx)
                     }
@@ -152,13 +157,14 @@ fun BibleReaderScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // Top Expressive Header with SplitButton + Typography trigger + WavyProgressIndicator
+            // Top Expressive Header with SplitButton + Version Pill + Typography trigger + WavyProgressIndicator
             BibleReaderTopHeader(
-                bookName = uiState.currentBook?.name ?: "Biblia RVR1960",
+                bookName = uiState.currentBook?.name ?: "Biblia",
                 chapter = uiState.currentChapter,
-                chapterCount = uiState.currentBook?.chapterCount ?: 1,
+                versionId = uiState.currentVersionId,
                 readingProgress = readingProgress,
                 onOpenBookPicker = { viewModel.onIntent(BibleReaderIntent.ToggleBookPicker(true)) },
+                onOpenVersionPicker = { viewModel.onIntent(BibleReaderIntent.ToggleVersionPicker(true)) },
                 onOpenTypography = { viewModel.onIntent(BibleReaderIntent.ToggleTypographySheet(true)) }
             )
 
@@ -181,17 +187,54 @@ fun BibleReaderScreen(
                 ) { verse ->
                     val isSelected = verse.id in uiState.selectedVerseIds
                     val isBookmarked = verse.id in uiState.bookmarkedVerseIds
-                    val isHighlighted = verse.verse == uiState.highlightedVerseNumber
-                    BibleVerseRow(
-                        verse = verse,
-                        isSelected = isSelected,
-                        isBookmarked = isBookmarked,
-                        isHighlighted = isHighlighted,
-                        fontSizeSp = uiState.preferences.fontSizeSp,
-                        fontWeight = uiState.preferences.fontWeight,
-                        fontGrade = uiState.preferences.fontGrade,
-                        onClick = { viewModel.onIntent(BibleReaderIntent.ToggleVerseSelection(verse.id)) }
-                    )
+                    val isHighlighted = uiState.highlightedVerseNumber?.let { target ->
+                        verse.verse <= target && verse.verseEnd >= target
+                    } ?: false
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (!verse.heading.isNullOrBlank()) {
+                            Text(
+                                text = verse.heading,
+                                style = MaterialTheme.typography.titleMediumEmphasized,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    end = 4.dp,
+                                    top = if (verse.verse == 1) 2.dp else 10.dp,
+                                    bottom = 2.dp
+                                )
+                            )
+                        }
+
+                        if (!verse.label.isNullOrBlank()) {
+                            Text(
+                                text = verse.label,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontStyle = FontStyle.Italic
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    end = 4.dp,
+                                    bottom = 2.dp
+                                )
+                            )
+                        }
+
+                        BibleVerseRow(
+                            verse = verse,
+                            isSelected = isSelected,
+                            isBookmarked = isBookmarked,
+                            isHighlighted = isHighlighted,
+                            fontSizeSp = uiState.preferences.fontSizeSp,
+                            fontWeight = uiState.preferences.fontWeight,
+                            fontGrade = uiState.preferences.fontGrade,
+                            onClick = { viewModel.onIntent(BibleReaderIntent.ToggleVerseSelection(verse.id)) }
+                        )
+                    }
                 }
 
                 // Bottom inline chapter navigation card
@@ -248,6 +291,18 @@ fun BibleReaderScreen(
         )
     }
 
+    // Bible Version Picker ModalBottomSheet (RVR1960, RVC, TLA)
+    if (uiState.isVersionPickerVisible) {
+        VersionPickerSheet(
+            versions = uiState.versions,
+            selectedVersionId = uiState.currentVersionId,
+            onSelectVersion = { versionId ->
+                viewModel.onIntent(BibleReaderIntent.SelectVersion(versionId))
+            },
+            onDismiss = { viewModel.onIntent(BibleReaderIntent.ToggleVersionPicker(false)) }
+        )
+    }
+
     // Personalization Sheet (Font Size & Light/Dark Theme)
     if (uiState.isTypographySheetVisible) {
         PersonalizationSettingsSheet(
@@ -264,9 +319,10 @@ fun BibleReaderScreen(
 private fun BibleReaderTopHeader(
     bookName: String,
     chapter: Int,
-    chapterCount: Int,
+    versionId: String,
     readingProgress: Float,
     onOpenBookPicker: () -> Unit,
+    onOpenVersionPicker: () -> Unit,
     onOpenTypography: () -> Unit
 ) {
     Column(
@@ -311,15 +367,27 @@ private fun BibleReaderTopHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
+                    onClick = onOpenVersionPicker,
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ) {
-                    Text(
-                        text = "RVR1960 · $chapter/$chapterCount",
-                        style = MaterialTheme.typography.labelMediumEmphasized,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = versionId,
+                            style = MaterialTheme.typography.labelMediumEmphasized,
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.ExpandMore,
+                            contentDescription = "Cambiar versión de la Biblia",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 FilledTonalIconButton(
@@ -406,14 +474,16 @@ private fun BibleVerseRow(
         ) {
             Text(
                 text = buildAnnotatedString {
-                    withStyle(
-                        SpanStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = (fontSizeSp * 0.78f).sp
-                        )
-                    ) {
-                        append("${verse.verse}  ")
+                    if (verse.verseLabel.isNotEmpty()) {
+                        withStyle(
+                            SpanStyle(
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = (fontSizeSp * 0.78f).sp
+                            )
+                        ) {
+                            append("${verse.verseLabel}  ")
+                        }
                     }
                     append(verse.text)
                 },
@@ -793,6 +863,117 @@ private fun PersonalizationSettingsSheet(
                                 },
                                 maxLines = 1,
                                 softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersionPickerSheet(
+    versions: List<BibleVersion>,
+    selectedVersionId: String,
+    onSelectVersion: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val displayVersions = remember(versions) {
+        versions.ifEmpty {
+            listOf(
+                BibleVersion("RVR1960", "Reina Valera 1960", "Biblia Reina Valera 1960", "", 1),
+                BibleVersion("RVC", "Reina Valera Contemporánea", "Reina Valera Contemporánea", "", 2),
+                BibleVersion("TLA", "Traducción en Lenguaje Actual", "Traducción en Lenguaje Actual", "", 3)
+            )
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Versión de la Biblia",
+                style = MaterialTheme.typography.headlineSmallEmphasized
+            )
+
+            displayVersions.forEach { version ->
+                val isSelected = version.id == selectedVersionId
+                Surface(
+                    onClick = { onSelectVersion(version.id) },
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                    border = if (isSelected) {
+                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                            contentColor = if (isSelected) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        ) {
+                            Text(
+                                text = version.id,
+                                style = MaterialTheme.typography.labelMediumEmphasized,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = version.name,
+                                style = MaterialTheme.typography.titleSmallEmphasized,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                            Text(
+                                text = "Disponible sin conexión",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = "Versión seleccionada",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }

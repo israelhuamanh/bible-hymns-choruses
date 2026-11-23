@@ -50,7 +50,6 @@ class SongsViewModel @Inject constructor(
 
     private fun observeCatalogAndFilters() {
         val catalogFlow = selectedTypeFlow
-            .distinctUntilChanged()
             .flatMapLatest { type -> getSongsCatalogUseCase(type) }
 
         val ftsMatchesFlow = searchQueryFlow

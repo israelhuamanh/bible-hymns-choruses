@@ -2,12 +2,14 @@ package com.huaman.bible_hymns_choruses.presentation.reader
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
 import com.huaman.bible_hymns_choruses.domain.model.BookmarkType
 import com.huaman.bible_hymns_choruses.domain.usecase.GetBibleBooksUseCase
 import com.huaman.bible_hymns_choruses.domain.usecase.GetBibleChapterUseCase
+import com.huaman.bible_hymns_choruses.domain.usecase.GetBibleVersionsUseCase
 import com.huaman.bible_hymns_choruses.domain.usecase.ManageBookmarksUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.ConcurrentHashMap
@@ -25,13 +27,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class BibleReaderViewModel @Inject constructor(
+    private val getBibleVersionsUseCase: GetBibleVersionsUseCase,
     private val getBibleBooksUseCase: GetBibleBooksUseCase,
     private val getBibleChapterUseCase: GetBibleChapterUseCase,
     private val manageBookmarksUseCase: ManageBookmarksUseCase,
@@ -44,8 +46,9 @@ class BibleReaderViewModel @Inject constructor(
     private val _effects = MutableSharedFlow<BibleReaderEffect>(extraBufferCapacity = 8)
     val effects: SharedFlow<BibleReaderEffect> = _effects.asSharedFlow()
 
-    // In-memory chapter cache preloading current, previous, and next chapters for 0 ms switching
-    private val chapterCache = ConcurrentHashMap<Pair<Int, Int>, List<BibleVerse>>()
+    // In-memory chapter cache keyed by (versionId, bookId, chapter) for 0 ms switching
+    private val chapterCache = ConcurrentHashMap<Triple<String, Int, Int>, List<BibleVerse>>()
+    private val versionFlow = MutableStateFlow(UserPreferences.DEFAULT_BIBLE_VERSION_ID)
     private val locationFlow = MutableStateFlow<Pair<Int, Int>?>(null)
 
     init {
@@ -57,7 +60,13 @@ class BibleReaderViewModel @Inject constructor(
     private fun observeInitialPreferences() {
         viewModelScope.launch {
             val prefs = userPreferencesRepository.userPreferencesFlow.first()
-            _uiState.update { it.copy(preferences = prefs) }
+            versionFlow.value = prefs.selectedBibleVersionId
+            _uiState.update {
+                it.copy(
+                    preferences = prefs,
+                    currentVersionId = prefs.selectedBibleVersionId
+                )
+            }
             if (locationFlow.value == null) {
                 locationFlow.value = prefs.lastBookId to prefs.lastChapter
             }
@@ -65,13 +74,20 @@ class BibleReaderViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.userPreferencesFlow
                 .distinctUntilChanged { old, new ->
-                    old.fontSizeSp == new.fontSizeSp &&
+                    old.selectedBibleVersionId == new.selectedBibleVersionId &&
+                        old.fontSizeSp == new.fontSizeSp &&
                         old.fontWeight == new.fontWeight &&
                         old.fontGrade == new.fontGrade &&
                         old.themeMode == new.themeMode
                 }
                 .collect { prefs ->
-                    _uiState.update { it.copy(preferences = prefs) }
+                    versionFlow.value = prefs.selectedBibleVersionId
+                    _uiState.update {
+                        it.copy(
+                            preferences = prefs,
+                            currentVersionId = prefs.selectedBibleVersionId
+                        )
+                    }
                 }
         }
     }
@@ -79,19 +95,21 @@ class BibleReaderViewModel @Inject constructor(
     private fun observeBooksAndBookmarks() {
         viewModelScope.launch {
             combine(
+                getBibleVersionsUseCase(),
                 getBibleBooksUseCase(),
                 manageBookmarksUseCase.observeAll()
-            ) { books, bookmarks ->
+            ) { versions, books, bookmarks ->
                 val bookmarkedVerseIds = bookmarks
                     .filter { it.itemType == BookmarkType.VERSE }
                     .map { it.referenceId }
                     .toSet()
-                books to bookmarkedVerseIds
-            }.collect { (books, bookmarkedIds) ->
+                Triple(versions, books, bookmarkedVerseIds)
+            }.collect { (versions, books, bookmarkedIds) ->
                 val loc = locationFlow.value
                 val currentBook = loc?.let { (bookId, _) -> books.firstOrNull { it.id == bookId } }
                 _uiState.update { state ->
                     state.copy(
+                        versions = versions,
                         books = books,
                         currentBook = currentBook ?: state.currentBook,
                         bookmarkedVerseIds = bookmarkedIds,
@@ -100,7 +118,7 @@ class BibleReaderViewModel @Inject constructor(
                     )
                 }
                 if (loc != null && books.isNotEmpty()) {
-                    preloadAdjacentChapters(books, loc.first, loc.second)
+                    preloadAdjacentChapters(versionFlow.value, books, loc.first, loc.second)
                 }
             }
         }
@@ -108,41 +126,47 @@ class BibleReaderViewModel @Inject constructor(
 
     private fun observeCurrentChapter() {
         viewModelScope.launch {
-            locationFlow
-                .map { it }
+            combine(versionFlow, locationFlow) { versionId, loc ->
+                if (loc == null) null else Triple(versionId, loc.first, loc.second)
+            }
                 .distinctUntilChanged()
-                .flatMapLatest { loc ->
-                    if (loc == null) {
+                .flatMapLatest { key ->
+                    if (key == null) {
                         kotlinx.coroutines.flow.flowOf(emptyList())
                     } else {
-                        val cached = chapterCache[loc]
+                        val (versionId, bookId, chapter) = key
+                        val cached = chapterCache[key]
                         if (cached != null) {
                             _uiState.update { state ->
-                                val book = state.books.firstOrNull { it.id == loc.first }
+                                val book = state.books.firstOrNull { it.id == bookId }
                                 state.copy(
                                     isLoading = false,
+                                    currentVersionId = versionId,
                                     currentBook = book ?: state.currentBook,
-                                    currentChapter = loc.second,
+                                    currentChapter = chapter,
                                     verses = cached,
                                     selectedVerseIds = emptySet(),
-                                    hasPreviousChapter = computeHasPrevious(state.books, book, loc.second),
-                                    hasNextChapter = computeHasNext(state.books, book, loc.second)
+                                    hasPreviousChapter = computeHasPrevious(state.books, book, chapter),
+                                    hasNextChapter = computeHasNext(state.books, book, chapter)
                                 )
                             }
                         }
-                        getBibleChapterUseCase(loc.first, loc.second)
+                        getBibleChapterUseCase(versionId, bookId, chapter)
                     }
                 }
                 .flowOn(Dispatchers.IO)
                 .collect { verses ->
                     val loc = locationFlow.value ?: return@collect
+                    val versionId = versionFlow.value
+                    val key = Triple(versionId, loc.first, loc.second)
                     if (verses.isNotEmpty()) {
-                        chapterCache[loc] = verses
+                        chapterCache[key] = verses
                     }
                     _uiState.update { state ->
                         val book = state.books.firstOrNull { it.id == loc.first }
                         state.copy(
                             isLoading = false,
+                            currentVersionId = versionId,
                             currentBook = book ?: state.currentBook,
                             currentChapter = loc.second,
                             verses = verses,
@@ -152,21 +176,27 @@ class BibleReaderViewModel @Inject constructor(
                     }
                     val books = _uiState.value.books
                     if (books.isNotEmpty()) {
-                        preloadAdjacentChapters(books, loc.first, loc.second)
+                        preloadAdjacentChapters(versionId, books, loc.first, loc.second)
                     }
                 }
         }
     }
 
-    private fun preloadAdjacentChapters(books: List<BibleBook>, bookId: Int, chapter: Int) {
+    private fun preloadAdjacentChapters(
+        versionId: String,
+        books: List<BibleBook>,
+        bookId: Int,
+        chapter: Int
+    ) {
         val prev = resolvePreviousLocation(books, bookId, chapter)
         val next = resolveNextLocation(books, bookId, chapter)
         listOfNotNull(prev, next).forEach { target ->
-            if (!chapterCache.containsKey(target)) {
+            val key = Triple(versionId, target.first, target.second)
+            if (!chapterCache.containsKey(key)) {
                 viewModelScope.launch(Dispatchers.IO) {
-                    val verses = getBibleChapterUseCase(target.first, target.second).first()
+                    val verses = getBibleChapterUseCase(versionId, target.first, target.second).first()
                     if (verses.isNotEmpty()) {
-                        chapterCache[target] = verses
+                        chapterCache[key] = verses
                     }
                 }
             }
@@ -190,6 +220,28 @@ class BibleReaderViewModel @Inject constructor(
                 }
                 intent.highlightVerse?.let { verseNum ->
                     _effects.tryEmit(BibleReaderEffect.ScrollToVerse(verseNum))
+                }
+            }
+
+            is BibleReaderIntent.ToggleVersionPicker -> {
+                _uiState.update { it.copy(isVersionPickerVisible = intent.visible) }
+            }
+
+            is BibleReaderIntent.SelectVersion -> {
+                if (intent.versionId == _uiState.value.currentVersionId) {
+                    _uiState.update { it.copy(isVersionPickerVisible = false) }
+                    return
+                }
+                versionFlow.value = intent.versionId
+                _uiState.update {
+                    it.copy(
+                        currentVersionId = intent.versionId,
+                        isVersionPickerVisible = false,
+                        selectedVerseIds = emptySet()
+                    )
+                }
+                viewModelScope.launch {
+                    userPreferencesRepository.updateSelectedBibleVersion(intent.versionId)
                 }
             }
 
@@ -228,8 +280,13 @@ class BibleReaderViewModel @Inject constructor(
                 val selected = state.verses.filter { it.id in state.selectedVerseIds }
                 if (selected.isEmpty()) return
                 val header = "${book.name} ${state.currentChapter}:${formatVerseRange(selected)}"
-                val body = selected.joinToString("\n") { "${it.verse}. ${it.text}" }
-                _effects.tryEmit(BibleReaderEffect.CopyToClipboard("$header (RVR1960)\n$body", header))
+                val body = selected.joinToString("\n") { v ->
+                    val prefix = v.verseLabel.ifEmpty { v.verse.toString() }
+                    "$prefix. ${v.text}"
+                }
+                _effects.tryEmit(
+                    BibleReaderEffect.CopyToClipboard("$header (${state.currentVersionId})\n$body", header)
+                )
                 _effects.tryEmit(BibleReaderEffect.ShowMessage("Pasaje copiado: $header"))
                 _uiState.update { it.copy(selectedVerseIds = emptySet()) }
             }
@@ -241,10 +298,11 @@ class BibleReaderViewModel @Inject constructor(
                 if (selected.isEmpty()) return
                 viewModelScope.launch {
                     selected.forEach { verse ->
+                        val vLabel = verse.verseLabel.ifEmpty { verse.verse.toString() }
                         manageBookmarksUseCase.save(
                             type = BookmarkType.VERSE,
                             referenceId = verse.id,
-                            titlePreview = "${book.name} ${verse.chapter}:${verse.verse}",
+                            titlePreview = "${book.name} ${verse.chapter}:$vLabel (${verse.versionId})",
                             contentPreview = verse.text,
                             colorHex = intent.colorHex
                         )

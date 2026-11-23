@@ -13,8 +13,11 @@ import javax.inject.Inject
 class SmartSearchUseCase @Inject constructor(
     private val unifiedSearchRepository: UnifiedSearchRepository
 ) {
-    suspend operator fun invoke(rawQuery: String): UnifiedSearchResult {
-        val rawResult = unifiedSearchRepository.search(rawQuery)
+    suspend operator fun invoke(
+        rawQuery: String,
+        versionId: String = "RVR1960"
+    ): UnifiedSearchResult {
+        val rawResult = unifiedSearchRepository.search(rawQuery, versionId)
         val shortcuts = mutableListOf<DirectShortcut>()
 
         when (val route = rawResult.route) {

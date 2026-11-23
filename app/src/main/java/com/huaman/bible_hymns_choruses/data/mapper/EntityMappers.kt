@@ -1,5 +1,6 @@
 package com.huaman.bible_hymns_choruses.data.mapper
 
+import com.huaman.bible_hymns_choruses.data.local.entity.BibleVersionEntity
 import com.huaman.bible_hymns_choruses.data.local.entity.BookEntity
 import com.huaman.bible_hymns_choruses.data.local.entity.BookmarkEntity
 import com.huaman.bible_hymns_choruses.data.local.entity.SongEntity
@@ -8,6 +9,7 @@ import com.huaman.bible_hymns_choruses.data.local.entity.VerseEntity
 import com.huaman.bible_hymns_choruses.data.local.entity.VerseWithBookProjection
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
+import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
 import com.huaman.bible_hymns_choruses.domain.model.BookmarkItem
 import com.huaman.bible_hymns_choruses.domain.model.BookmarkType
 import com.huaman.bible_hymns_choruses.domain.model.SongDetail
@@ -16,6 +18,14 @@ import com.huaman.bible_hymns_choruses.domain.model.SongSummary
 import com.huaman.bible_hymns_choruses.domain.model.SongType
 import com.huaman.bible_hymns_choruses.domain.model.Testament
 import com.huaman.bible_hymns_choruses.domain.model.VerseSearchMatch
+
+fun BibleVersionEntity.toDomain(): BibleVersion = BibleVersion(
+    id = id,
+    name = name,
+    fullTitle = fullTitle,
+    copyright = copyright,
+    sortOrder = sortOrder
+)
 
 fun BookEntity.toDomain(): BibleBook = BibleBook(
     id = id,
@@ -27,19 +37,27 @@ fun BookEntity.toDomain(): BibleBook = BibleBook(
 
 fun VerseEntity.toDomain(): BibleVerse = BibleVerse(
     id = id,
+    versionId = versionId,
     bookId = bookId,
     chapter = chapter,
     verse = verse,
+    verseEnd = verseEnd,
+    verseLabel = verseLabel,
+    heading = heading,
+    label = label,
     text = text
 )
 
 fun VerseWithBookProjection.toDomain(): VerseSearchMatch = VerseSearchMatch(
     id = id,
+    versionId = versionId,
     bookId = bookId,
     bookName = bookName,
     bookAbbr = bookAbbr,
     chapter = chapter,
     verse = verse,
+    verseEnd = verseEnd,
+    verseLabel = verseLabel,
     text = text
 )
 

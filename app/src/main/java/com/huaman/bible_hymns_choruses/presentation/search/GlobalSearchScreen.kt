@@ -239,7 +239,7 @@ fun GlobalSearchScreen(
                 if (showBible && uiState.result.bibleMatches.isNotEmpty()) {
                     item(key = "header_bible") {
                         Text(
-                            text = "Biblia RVR1960 (${uiState.result.bibleMatches.size})",
+                            text = "Biblia ${uiState.activeVersionId} (${uiState.result.bibleMatches.size})",
                             style = MaterialTheme.typography.titleMediumEmphasized
                         )
                     }
@@ -408,8 +408,9 @@ private fun BibleSearchResultCard(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
+                val verseDisplay = match.verseLabel.ifEmpty { match.verse.toString() }
                 Text(
-                    text = "${match.bookName} ${match.chapter}:${match.verse}",
+                    text = "${match.bookName} ${match.chapter}:$verseDisplay",
                     style = MaterialTheme.typography.labelMediumEmphasized,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )

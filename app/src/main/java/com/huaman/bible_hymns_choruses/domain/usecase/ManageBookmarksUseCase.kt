@@ -27,6 +27,7 @@ class ManageBookmarksUseCase @Inject constructor(
         colorHex: String = "#D4AF37",
         note: String? = null
     ): Long {
+        bookmarkRepository.deleteBookmarkByReference(type.dbValue, referenceId)
         val entity = BookmarkEntity(
             itemType = type.dbValue,
             referenceId = referenceId,

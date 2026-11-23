@@ -39,6 +39,7 @@ enum class ActiveAppTab {
 
 @Immutable
 data class UserPreferences(
+    val selectedBibleVersionId: String = DEFAULT_BIBLE_VERSION_ID,
     val lastBookId: Int = 1,          // Génesis
     val lastChapter: Int = 1,         // Capítulo 1
     val fontSizeSp: Float = 18f,      // 14f .. 28f
@@ -46,13 +47,18 @@ data class UserPreferences(
     val fontGrade: Int = 0,           // Google Sans Flex Grade (-50 .. 150)
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val lastActiveTab: ActiveAppTab = ActiveAppTab.BIBLE
-)
+) {
+    companion object {
+        const val DEFAULT_BIBLE_VERSION_ID = "RVR1960"
+    }
+}
 
 @Singleton
 class UserPreferencesRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
     private object Keys {
+        val SELECTED_BIBLE_VERSION_ID = stringPreferencesKey("selected_bible_version_id")
         val LAST_BOOK_ID = intPreferencesKey("last_book_id")
         val LAST_CHAPTER = intPreferencesKey("last_chapter")
         val FONT_SIZE_SP = floatPreferencesKey("font_size_sp")
@@ -73,8 +79,12 @@ class UserPreferencesRepository @Inject constructor(
         .map { prefs ->
             val themeName = prefs[Keys.THEME_MODE] ?: ThemeMode.SYSTEM.name
             val tabName = prefs[Keys.LAST_ACTIVE_TAB] ?: ActiveAppTab.BIBLE.name
+            val versionId = prefs[Keys.SELECTED_BIBLE_VERSION_ID]
+                ?.takeIf { it.isNotBlank() }
+                ?: UserPreferences.DEFAULT_BIBLE_VERSION_ID
 
             UserPreferences(
+                selectedBibleVersionId = versionId,
                 lastBookId = (prefs[Keys.LAST_BOOK_ID] ?: 1).coerceIn(1, 66),
                 lastChapter = (prefs[Keys.LAST_CHAPTER] ?: 1).coerceAtLeast(1),
                 fontSizeSp = (prefs[Keys.FONT_SIZE_SP] ?: 18f).coerceIn(14f, 30f),
@@ -84,6 +94,12 @@ class UserPreferencesRepository @Inject constructor(
                 lastActiveTab = runCatching { ActiveAppTab.valueOf(tabName) }.getOrDefault(ActiveAppTab.BIBLE)
             )
         }
+
+    suspend fun updateSelectedBibleVersion(versionId: String) {
+        dataStore.edit { prefs ->
+            prefs[Keys.SELECTED_BIBLE_VERSION_ID] = versionId
+        }
+    }
 
     suspend fun updateLastReadingPosition(bookId: Int, chapter: Int) {
         dataStore.edit { prefs ->
