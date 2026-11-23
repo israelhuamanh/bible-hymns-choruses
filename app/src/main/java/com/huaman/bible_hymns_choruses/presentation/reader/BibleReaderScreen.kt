@@ -369,19 +369,19 @@ private fun BibleReaderTopHeader(
                 FilledTonalButton(
                     onClick = onOpenVersionPicker,
                     shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                    contentPadding = PaddingValues(start = 16.dp, end = 10.dp),
-                    modifier = Modifier.height(ButtonDefaults.MinHeight)
+                    contentPadding = PaddingValues(start = 16.dp, end = 12.dp),
+                    modifier = Modifier.height(40.dp)
                 ) {
                     Text(
                         text = versionId,
                         style = MaterialTheme.typography.labelLargeEmphasized,
                         maxLines = 1
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Rounded.ExpandMore,
                         contentDescription = "Cambiar versión de la Biblia",
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -902,14 +902,25 @@ private fun VersionPickerSheet(
 
             displayVersions.forEach { version ->
                 val isSelected = version.id == selectedVersionId
-                Surface(
-                    onClick = { onSelectVersion(version.id) },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isSelected) {
+                val containerColor by animateColorAsState(
+                    targetValue = if (isSelected) {
                         MaterialTheme.colorScheme.secondaryContainer
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHigh
                     },
+                    animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    label = "VersionItemColor"
+                )
+                val cornerRadius by animateDpAsState(
+                    targetValue = if (isSelected) 20.dp else 16.dp,
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                    label = "VersionItemCornerMorph"
+                )
+
+                Surface(
+                    onClick = { onSelectVersion(version.id) },
+                    shape = RoundedCornerShape(cornerRadius),
+                    color = containerColor,
                     border = if (isSelected) {
                         BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                     } else {
@@ -920,9 +931,9 @@ private fun VersionPickerSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Surface(
                             shape = CircleShape,
@@ -939,8 +950,8 @@ private fun VersionPickerSheet(
                         ) {
                             Text(
                                 text = version.id,
-                                style = MaterialTheme.typography.labelMediumEmphasized,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                style = MaterialTheme.typography.labelLargeEmphasized,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
 
@@ -950,7 +961,11 @@ private fun VersionPickerSheet(
                         ) {
                             Text(
                                 text = version.name,
-                                style = MaterialTheme.typography.titleSmallEmphasized,
+                                style = if (isSelected) {
+                                    MaterialTheme.typography.titleMediumEmphasized
+                                } else {
+                                    MaterialTheme.typography.titleMedium
+                                },
                                 color = if (isSelected) {
                                     MaterialTheme.colorScheme.onSecondaryContainer
                                 } else {
@@ -959,8 +974,12 @@ private fun VersionPickerSheet(
                             )
                             Text(
                                 text = "Disponible sin conexión",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
 
@@ -968,7 +987,8 @@ private fun VersionPickerSheet(
                             Icon(
                                 imageVector = Icons.Rounded.Check,
                                 contentDescription = "Versión seleccionada",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
