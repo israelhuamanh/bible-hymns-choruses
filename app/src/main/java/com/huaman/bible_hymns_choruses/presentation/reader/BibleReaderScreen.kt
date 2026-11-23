@@ -366,28 +366,23 @@ private fun BibleReaderTopHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
+                FilledTonalButton(
                     onClick = onOpenVersionPicker,
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    contentPadding = PaddingValues(start = 16.dp, end = 10.dp),
+                    modifier = Modifier.height(ButtonDefaults.MinHeight)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = versionId,
-                            style = MaterialTheme.typography.labelMediumEmphasized,
-                            maxLines = 1
-                        )
-                        Icon(
-                            imageVector = Icons.Rounded.ExpandMore,
-                            contentDescription = "Cambiar versión de la Biblia",
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Text(
+                        text = versionId,
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.ExpandMore,
+                        contentDescription = "Cambiar versión de la Biblia",
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
                 FilledTonalIconButton(
