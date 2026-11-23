@@ -1043,7 +1043,7 @@ def build_database(
     cur.execute("INSERT INTO verses_fts(verses_fts) VALUES('rebuild');")
     cur.execute("INSERT INTO songs_fts(songs_fts) VALUES('rebuild');")
     cur.execute("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT);")
-    cur.execute("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6a8f7b03e2bf91bf9284529fbba0389e');")
+    cur.execute("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2b0a5188f5467d96d8a60714273d9377');")
     cur.execute("PRAGMA user_version = 2;")
     conn.commit()
 
