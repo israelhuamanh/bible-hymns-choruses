@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#3E2983"/>
+      <stop offset="100%" stop-color="#1E1442"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="108" height="108" rx="24" fill="url(#bgGlow)"/>
+  <!-- Outer Open Bible Pages -->
+  <path fill="#E4DFFF" d="M27,48 C27,48 39,45 52,51 L52,77 C39,71 27,74 27,74 Z M81,48 C81,48 69,45 56,51 L56,77 C69,71 81,74 81,74 Z"/>
+  <!-- Inner Bible Pages -->
+  <path fill="#FFFFFF" d="M30,44 C30,44 41,41 52,47 L52,72 C41,66 30,69 30,69 Z M78,44 C78,44 67,41 56,47 L56,72 C67,66 78,69 78,69 Z"/>
+  <!-- Sacred Cross & Musical Praise Note emerging from spine -->
+  <path fill="#FFD8E6" d="M52,24 L56,24 L56,49 L52,49 Z M46,31 L62,31 L62,35 L46,35 Z"/>
+  <path fill="#FFFFFF" d="M62,28 L65,28 L65,41 C65,43.8 62.5,46 59.5,46 C56.7,46 54.5,44.1 54.5,41.6 C54.5,39.1 56.7,37.2 59.5,37.2 C60.4,37.2 61.3,37.4 62,37.8 L62,28 Z M62,28 C67,28 71,31 72,35 C69,33 66,32 62,32 Z"/>
+</svg>

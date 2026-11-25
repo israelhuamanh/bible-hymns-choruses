@@ -3,6 +3,7 @@ package com.huaman.bible_hymns_choruses.core.datastore
 import androidx.compose.runtime.Immutable
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.map
  * - Google Sans Flex variable axes: font weight (`wght`: 400..700) and grade (`GRAD`: -50..150)
  * - Theme preference (SYSTEM, LIGHT, DARK)
  * - Last active navigation tab (BIBLE, SONGS, BOOKMARKS)
+ * - First-time onboarding completion state (`hasCompletedOnboarding`)
  */
 @Immutable
 enum class ThemeMode {
@@ -46,7 +48,8 @@ data class UserPreferences(
     val fontWeight: Int = 400,        // Google Sans Flex Weight (400 Normal, 500 Medium, 600 SemiBold, 700 Bold)
     val fontGrade: Int = 0,           // Google Sans Flex Grade (-50 .. 150)
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val lastActiveTab: ActiveAppTab = ActiveAppTab.BIBLE
+    val lastActiveTab: ActiveAppTab = ActiveAppTab.BIBLE,
+    val hasCompletedOnboarding: Boolean = false
 ) {
     companion object {
         const val DEFAULT_BIBLE_VERSION_ID = "RVR1960"
@@ -66,6 +69,7 @@ class UserPreferencesRepository @Inject constructor(
         val FONT_GRADE = intPreferencesKey("font_grade")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LAST_ACTIVE_TAB = stringPreferencesKey("last_active_tab")
+        val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
     }
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -91,9 +95,16 @@ class UserPreferencesRepository @Inject constructor(
                 fontWeight = (prefs[Keys.FONT_WEIGHT] ?: 400).coerceIn(300, 700),
                 fontGrade = (prefs[Keys.FONT_GRADE] ?: 0).coerceIn(-50, 150),
                 themeMode = runCatching { ThemeMode.valueOf(themeName) }.getOrDefault(ThemeMode.SYSTEM),
-                lastActiveTab = runCatching { ActiveAppTab.valueOf(tabName) }.getOrDefault(ActiveAppTab.BIBLE)
+                lastActiveTab = runCatching { ActiveAppTab.valueOf(tabName) }.getOrDefault(ActiveAppTab.BIBLE),
+                hasCompletedOnboarding = prefs[Keys.HAS_COMPLETED_ONBOARDING] ?: false
             )
         }
+
+    suspend fun completeOnboarding() {
+        dataStore.edit { prefs ->
+            prefs[Keys.HAS_COMPLETED_ONBOARDING] = true
+        }
+    }
 
     suspend fun updateSelectedBibleVersion(versionId: String) {
         dataStore.edit { prefs ->

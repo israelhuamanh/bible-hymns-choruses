@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
@@ -84,6 +85,7 @@ import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksScreen
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksViewModel
+import com.huaman.bible_hymns_choruses.presentation.onboarding.FirstLaunchOnboardingSheet
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderIntent
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderScreen
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderViewModel
@@ -108,7 +110,16 @@ class MainAppViewModel @Inject constructor(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = UserPreferences()
+            initialValue = UserPreferences(hasCompletedOnboarding = true)
+        )
+
+    val showOnboarding: StateFlow<Boolean> = userPreferencesRepository.userPreferencesFlow
+        .map { !it.hasCompletedOnboarding }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false
         )
 
     val themeMode: StateFlow<ThemeMode> = userPreferencesRepository.userPreferencesFlow
@@ -123,6 +134,12 @@ class MainAppViewModel @Inject constructor(
     fun setActiveTab(tab: ActiveAppTab) {
         viewModelScope.launch {
             userPreferencesRepository.updateLastActiveTab(tab)
+        }
+    }
+
+    fun completeOnboarding() {
+        viewModelScope.launch {
+            userPreferencesRepository.completeOnboarding()
         }
     }
 }
@@ -163,6 +180,7 @@ fun MainScaffold(
     val currentDestination = backStackEntry?.destination
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val showOnboarding by appViewModel.showOnboarding.collectAsStateWithLifecycle()
 
     val bibleViewModel: BibleReaderViewModel = hiltViewModel()
     val songsViewModel: SongsViewModel = hiltViewModel()
@@ -191,6 +209,12 @@ fun MainScaffold(
     }
 
     val isMainTabRoute = currentDestination?.hasRoute<AppRoute.BibleReaderRoute>() ?: true
+
+    if (showOnboarding) {
+        FirstLaunchOnboardingSheet(
+            onComplete = { appViewModel.completeOnboarding() }
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
