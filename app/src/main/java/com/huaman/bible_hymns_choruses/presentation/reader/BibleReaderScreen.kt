@@ -922,7 +922,7 @@ private fun VersionPickerSheet(
                     shape = RoundedCornerShape(cornerRadius),
                     color = containerColor,
                     border = if (isSelected) {
-                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     } else {
                         null
                     },
@@ -931,7 +931,7 @@ private fun VersionPickerSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -976,7 +976,7 @@ private fun VersionPickerSheet(
                                 text = "Disponible sin conexión",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 }
@@ -987,7 +987,7 @@ private fun VersionPickerSheet(
                             Icon(
                                 imageVector = Icons.Rounded.Check,
                                 contentDescription = "Versión seleccionada",
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
