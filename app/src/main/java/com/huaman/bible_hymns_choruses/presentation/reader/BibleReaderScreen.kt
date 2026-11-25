@@ -94,6 +94,8 @@ import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
 import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
 import com.huaman.bible_hymns_choruses.domain.model.Testament
 import com.huaman.bible_hymns_choruses.ui.theme.readerBodyTextStyle
+import com.huaman.bible_hymns_choruses.ui.theme.readerHeadingTextStyle
+import com.huaman.bible_hymns_choruses.ui.theme.readerLabelTextStyle
 import kotlin.math.roundToInt
 
 @Composable
@@ -198,13 +200,15 @@ fun BibleReaderScreen(
                         if (!verse.heading.isNullOrBlank()) {
                             Text(
                                 text = verse.heading,
-                                style = MaterialTheme.typography.titleMediumEmphasized,
+                                style = readerHeadingTextStyle(
+                                    fontSizeSp = uiState.preferences.fontSizeSp
+                                ),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(
                                     start = 4.dp,
                                     end = 4.dp,
-                                    top = if (verse.verse == 1) 2.dp else 10.dp,
-                                    bottom = 2.dp
+                                    top = if (verse.verse == 1) 4.dp else 14.dp,
+                                    bottom = 4.dp
                                 )
                             )
                         }
@@ -212,8 +216,8 @@ fun BibleReaderScreen(
                         if (!verse.label.isNullOrBlank()) {
                             Text(
                                 text = verse.label,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontStyle = FontStyle.Italic
+                                style = readerLabelTextStyle(
+                                    fontSizeSp = uiState.preferences.fontSizeSp
                                 ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(
@@ -802,11 +806,20 @@ private fun PersonalizationSettingsSheet(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Lámpara es a mis pies tu palabra, y lumbrera a mi camino.",
-                    style = readerBodyTextStyle(fontSizeSp = fontSizeSp),
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "La palabra de Dios",
+                        style = readerHeadingTextStyle(fontSizeSp = fontSizeSp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Lámpara es a mis pies tu palabra, y lumbrera a mi camino.",
+                        style = readerBodyTextStyle(fontSizeSp = fontSizeSp)
+                    )
+                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

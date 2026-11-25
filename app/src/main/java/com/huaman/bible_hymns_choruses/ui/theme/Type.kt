@@ -62,6 +62,53 @@ fun readerBodyTextStyle(
     )
 }
 
+/**
+ * Dynamic section heading [TextStyle] for Bible passage subtitles (`heading`), scaling live
+ * with the user's [fontSizeSp] preference.
+ *
+ * - From M3 (`references/typography.md` & `references/tokens.md`):
+ *   - Emphasized title styles use `FontWeight.Bold` (`700`) and `0.15.sp` tracking (`Title medium emph.`).
+ *   - Large/title type readability uses a `~1.2x` line-height ratio (`references/typography.md#Readability`).
+ * - My design decision (not in M3):
+ *   - Scale heading font size proportionally at `1.15f * fontSizeSp` so section subtitles always
+ *     stand out above verse body text (`1.0f * fontSizeSp`) across the entire `14..28 sp` slider range.
+ */
+fun readerHeadingTextStyle(
+    fontSizeSp: Float = 18f
+): TextStyle {
+    val headingSize = (fontSizeSp * 1.15f).coerceIn(16f, 34f)
+    return TextStyle(
+        fontFamily = GoogleSansFlexFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = headingSize.sp,
+        lineHeight = (headingSize * 1.22f).sp,
+        letterSpacing = 0.15.sp
+    )
+}
+
+/**
+ * Dynamic psalm/note label [TextStyle] (`label`), scaling live with the user's [fontSizeSp] preference.
+ *
+ * - From M3 (`references/typography.md` & `references/tokens.md`):
+ *   - `Body medium emph.` uses `FontWeight.Medium` (`500`), `0.25.sp` tracking, and `~1.5x` line-height ratio.
+ * - My design decision (not in M3):
+ *   - Scale label font size at `0.92f * fontSizeSp` in italic so psalm superscriptions respond to the
+ *     font size slider while remaining distinct from both section headings and verse text.
+ */
+fun readerLabelTextStyle(
+    fontSizeSp: Float = 18f
+): TextStyle {
+    val labelSize = (fontSizeSp * 0.92f).coerceIn(13f, 26f)
+    return TextStyle(
+        fontFamily = GoogleSansFlexFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+        fontSize = labelSize.sp,
+        lineHeight = (labelSize * 1.45f).sp,
+        letterSpacing = 0.25.sp
+    )
+}
+
 // From M3 (references/tokens.md): 15 baseline + 15 emphasized type scale styles
 // Baseline and emphasized are used together; emphasized matches baseline size/lineHeight and adjusts weight and tracking.
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

@@ -47,8 +47,12 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -73,11 +77,18 @@ fun GlobalSearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank() && uiState.query.isBlank()) {
             viewModel.onIntent(SearchIntent.UpdateQuery(initialQuery))
         }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
     }
 
     Scaffold(
@@ -111,7 +122,9 @@ fun GlobalSearchScreen(
                 OutlinedTextField(
                     value = uiState.query,
                     onValueChange = { viewModel.onIntent(SearchIntent.UpdateQuery(it)) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
                     placeholder = {
                         Text("Cita (Juan 3:16), #104 o palabra clave...")
                     },

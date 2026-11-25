@@ -126,7 +126,7 @@ fun SongsScreen(
                 }
             }
 
-            // Quick numeric jump bar ("Ir al #...") + Filter search
+            // Quick numeric jump bar ("N.º") + Title/lyrics filter search
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -135,13 +135,31 @@ fun SongsScreen(
                 OutlinedTextField(
                     value = uiState.jumpNumberQuery,
                     onValueChange = { viewModel.onIntent(SongsIntent.UpdateJumpNumber(it)) },
-                    modifier = Modifier.weight(0.42f),
-                    placeholder = { Text("Ir al #...", maxLines = 1) },
-                    leadingIcon = { Icon(Icons.Rounded.Tag, contentDescription = null) },
+                    modifier = Modifier.weight(0.36f),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    placeholder = {
+                        Text(
+                            text = "N.º",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Tag,
+                            contentDescription = "Ir al número",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     trailingIcon = {
                         if (uiState.jumpNumberQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.onIntent(SongsIntent.ExecuteJumpToNumber) }) {
-                                Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Ir")
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                                    contentDescription = "Ir al número",
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
                     },
@@ -163,13 +181,31 @@ fun SongsScreen(
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.onIntent(SongsIntent.UpdateSearchQuery(it)) },
-                    modifier = Modifier.weight(0.58f),
-                    placeholder = { Text("Título o letra...", maxLines = 1) },
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    modifier = Modifier.weight(0.64f),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    placeholder = {
+                        Text(
+                            text = "Buscar título o letra",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "Buscar título o letra",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
                     trailingIcon = {
                         if (uiState.searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.onIntent(SongsIntent.UpdateSearchQuery("")) }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Limpiar")
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Limpiar",
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
                     },
