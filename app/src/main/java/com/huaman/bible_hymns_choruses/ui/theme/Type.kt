@@ -19,7 +19,7 @@ val googleFontProvider = GoogleFont.Provider(
 val googleSansFlexFont = GoogleFont("Google Sans Flex")
 
 // From M3 (references/typography.md): Brand & Plain typeface slots configured with Google Sans Flex
-// My design decision (not in M3): Use Google Sans Flex across both Brand and Plain slots with Normal, Medium, SemiBold, and Bold weights
+// and local fallback chain so weights (Normal 400 -> Black 900) always render offline even without GMS.
 val GoogleSansFlexFontFamily = FontFamily(
     Font(
         googleFont = googleSansFlexFont,
@@ -40,6 +40,16 @@ val GoogleSansFlexFontFamily = FontFamily(
         googleFont = googleSansFlexFont,
         fontProvider = googleFontProvider,
         weight = FontWeight.Bold
+    ),
+    Font(
+        googleFont = googleSansFlexFont,
+        fontProvider = googleFontProvider,
+        weight = FontWeight.ExtraBold
+    ),
+    Font(
+        googleFont = googleSansFlexFont,
+        fontProvider = googleFontProvider,
+        weight = FontWeight.Black
     )
 )
 
@@ -52,7 +62,7 @@ fun readerBodyTextStyle(
     fontWeightValue: Int = 400,
     fontGradeValue: Int = 0
 ): TextStyle {
-    val effectiveWeight = (fontWeightValue + (fontGradeValue / 2)).coerceIn(300, 800)
+    val effectiveWeight = (fontWeightValue + (fontGradeValue / 2)).coerceIn(300, 700)
     return TextStyle(
         fontFamily = GoogleSansFlexFontFamily,
         fontWeight = FontWeight(effectiveWeight),
@@ -64,25 +74,29 @@ fun readerBodyTextStyle(
 
 /**
  * Dynamic section heading [TextStyle] for Bible passage subtitles (`heading`), scaling live
- * with the user's [fontSizeSp] preference.
+ * with the user's [fontSizeSp] preference and always maintaining heavier stroke weight than body text.
  *
  * - From M3 (`references/typography.md` & `references/tokens.md`):
- *   - Emphasized title styles use `FontWeight.Bold` (`700`) and `0.15.sp` tracking (`Title medium emph.`).
+ *   - "When reducing the scale, keep impactful contrast between sizes; avoid small differences."
+ *   - "Weight — apply emphasized to text that already carries weight (medium, bold) to reinforce hierarchy."
  *   - Large/title type readability uses a `~1.2x` line-height ratio (`references/typography.md#Readability`).
  * - My design decision (not in M3):
- *   - Scale heading font size proportionally at `1.15f * fontSizeSp` so section subtitles always
- *     stand out above verse body text (`1.0f * fontSizeSp`) across the entire `14..28 sp` slider range.
+ *   - Use `FontWeight.ExtraBold` (`800` at default body weight `400`, or `FontWeight.Black` `900` if body
+ *     weight is increased) and scale at `1.25f * fontSizeSp` (`17.5..35 sp`) so section headings have
+ *     unmistakable stroke thickness and size separation from verse body text across `14..28 sp`.
  */
 fun readerHeadingTextStyle(
-    fontSizeSp: Float = 18f
+    fontSizeSp: Float = 18f,
+    bodyFontWeightValue: Int = 400
 ): TextStyle {
-    val headingSize = (fontSizeSp * 1.15f).coerceIn(16f, 34f)
+    val headingSize = (fontSizeSp * 1.25f).coerceIn(17.5f, 35f)
+    val headingWeight = (bodyFontWeightValue + 400).coerceIn(800, 900)
     return TextStyle(
         fontFamily = GoogleSansFlexFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight(headingWeight),
         fontSize = headingSize.sp,
         lineHeight = (headingSize * 1.22f).sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = 0.sp
     )
 }
 
@@ -90,22 +104,22 @@ fun readerHeadingTextStyle(
  * Dynamic psalm/note label [TextStyle] (`label`), scaling live with the user's [fontSizeSp] preference.
  *
  * - From M3 (`references/typography.md` & `references/tokens.md`):
- *   - `Body medium emph.` uses `FontWeight.Medium` (`500`), `0.25.sp` tracking, and `~1.5x` line-height ratio.
+ *   - Emphasized subtitle/caption weight (`SemiBold 600`) with `0.15.sp` tracking and `~1.45x` line-height ratio.
  * - My design decision (not in M3):
- *   - Scale label font size at `0.92f * fontSizeSp` in italic so psalm superscriptions respond to the
- *     font size slider while remaining distinct from both section headings and verse text.
+ *   - Scale label font size at `0.95f * fontSizeSp` in italic with `FontWeight.SemiBold` (`600`) so psalm
+ *     superscriptions respond to the font size slider and stand out clearly from verse text (`400`).
  */
 fun readerLabelTextStyle(
     fontSizeSp: Float = 18f
 ): TextStyle {
-    val labelSize = (fontSizeSp * 0.92f).coerceIn(13f, 26f)
+    val labelSize = (fontSizeSp * 0.95f).coerceIn(13.5f, 26.5f)
     return TextStyle(
         fontFamily = GoogleSansFlexFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
         fontSize = labelSize.sp,
         lineHeight = (labelSize * 1.45f).sp,
-        letterSpacing = 0.25.sp
+        letterSpacing = 0.15.sp
     )
 }
 

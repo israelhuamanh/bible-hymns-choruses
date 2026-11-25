@@ -201,7 +201,8 @@ fun BibleReaderScreen(
                             Text(
                                 text = verse.heading,
                                 style = readerHeadingTextStyle(
-                                    fontSizeSp = uiState.preferences.fontSizeSp
+                                    fontSizeSp = uiState.preferences.fontSizeSp,
+                                    bodyFontWeightValue = uiState.preferences.fontWeight
                                 ),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(
