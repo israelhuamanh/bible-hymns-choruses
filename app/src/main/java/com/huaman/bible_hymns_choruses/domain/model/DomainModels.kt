@@ -121,6 +121,17 @@ data class BookmarkItem(
 )
 
 @Immutable
+data class NoteItem(
+    val id: Int,
+    val title: String,
+    val content: String,
+    val imagePaths: List<String> = emptyList(),
+    val audioPaths: List<String> = emptyList(),
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Immutable
 sealed interface DirectShortcut {
     data class BiblePassage(
         val bookId: Int,

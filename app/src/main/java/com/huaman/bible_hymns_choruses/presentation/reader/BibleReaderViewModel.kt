@@ -316,6 +316,46 @@ class BibleReaderViewModel @Inject constructor(
                 }
             }
 
+            is BibleReaderIntent.OpenVerseNoteSheet -> {
+                if (_uiState.value.selectedVerseIds.isNotEmpty()) {
+                    _uiState.update { it.copy(isVerseNoteSheetVisible = true) }
+                }
+            }
+
+            is BibleReaderIntent.DismissVerseNoteSheet -> {
+                _uiState.update { it.copy(isVerseNoteSheetVisible = false) }
+            }
+
+            is BibleReaderIntent.SaveVerseNote -> {
+                val state = _uiState.value
+                val book = state.currentBook ?: return
+                val selected = state.verses.filter { it.id in state.selectedVerseIds }
+                if (selected.isEmpty()) return
+                val cleanedNote = intent.noteText.trim().takeIf { it.isNotEmpty() }
+                viewModelScope.launch {
+                    selected.forEach { verse ->
+                        val vLabel = verse.verseLabel.ifEmpty { verse.verse.toString() }
+                        manageBookmarksUseCase.save(
+                            type = BookmarkType.VERSE,
+                            referenceId = verse.id,
+                            titlePreview = "${book.name} ${verse.chapter}:$vLabel (${verse.versionId})",
+                            contentPreview = verse.text,
+                            colorHex = intent.colorHex,
+                            note = cleanedNote
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isVerseNoteSheetVisible = false,
+                            selectedVerseIds = emptySet()
+                        )
+                    }
+                    _effects.tryEmit(
+                        BibleReaderEffect.ShowMessage("Nota guardada en Guardados")
+                    )
+                }
+            }
+
             is BibleReaderIntent.ToggleBookPicker -> {
                 _uiState.update { it.copy(isBookPickerVisible = intent.visible) }
             }

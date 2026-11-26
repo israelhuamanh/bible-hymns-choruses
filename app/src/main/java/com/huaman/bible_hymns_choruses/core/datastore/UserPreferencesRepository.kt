@@ -36,7 +36,8 @@ enum class ThemeMode {
 enum class ActiveAppTab {
     BIBLE,
     SONGS,
-    BOOKMARKS
+    BOOKMARKS,
+    NOTES
 }
 
 @Immutable

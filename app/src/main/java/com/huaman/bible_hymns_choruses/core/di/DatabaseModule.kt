@@ -6,6 +6,7 @@ import com.huaman.bible_hymns_choruses.data.local.BibleHymnsDatabase
 import com.huaman.bible_hymns_choruses.data.local.UserBookmarksDatabase
 import com.huaman.bible_hymns_choruses.data.local.dao.BibleDao
 import com.huaman.bible_hymns_choruses.data.local.dao.BookmarkDao
+import com.huaman.bible_hymns_choruses.data.local.dao.NoteDao
 import com.huaman.bible_hymns_choruses.data.local.dao.SongDao
 import dagger.Module
 import dagger.Provides
@@ -42,7 +43,9 @@ object DatabaseModule {
             context,
             UserBookmarksDatabase::class.java,
             UserBookmarksDatabase.DATABASE_NAME
-        ).build()
+        )
+            .addMigrations(UserBookmarksDatabase.MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -53,4 +56,7 @@ object DatabaseModule {
 
     @Provides
     fun provideBookmarkDao(database: UserBookmarksDatabase): BookmarkDao = database.bookmarkDao()
+
+    @Provides
+    fun provideNoteDao(database: UserBookmarksDatabase): NoteDao = database.noteDao()
 }

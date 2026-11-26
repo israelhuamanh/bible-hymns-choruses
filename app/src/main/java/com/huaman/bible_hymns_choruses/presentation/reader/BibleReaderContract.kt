@@ -22,6 +22,7 @@ data class BibleReaderUiState(
     val bookmarkedVerseIds: Set<Int> = emptySet(),
     val isBookPickerVisible: Boolean = false,
     val isVersionPickerVisible: Boolean = false,
+    val isVerseNoteSheetVisible: Boolean = false,
     val pickerTestament: Testament = Testament.AT,
     val isTypographySheetVisible: Boolean = false,
     val preferences: UserPreferences = UserPreferences(),
@@ -45,6 +46,9 @@ sealed interface BibleReaderIntent {
     data object ClearSelection : BibleReaderIntent
     data object CopySelectedVerses : BibleReaderIntent
     data class BookmarkSelectedVerses(val colorHex: String = "#D4AF37") : BibleReaderIntent
+    data object OpenVerseNoteSheet : BibleReaderIntent
+    data object DismissVerseNoteSheet : BibleReaderIntent
+    data class SaveVerseNote(val noteText: String, val colorHex: String = "#D4AF37") : BibleReaderIntent
     data class ToggleBookPicker(val visible: Boolean) : BibleReaderIntent
     data class SelectPickerTestament(val testament: Testament) : BibleReaderIntent
     data class ToggleTypographySheet(val visible: Boolean) : BibleReaderIntent

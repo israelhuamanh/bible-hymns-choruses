@@ -31,8 +31,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -85,6 +87,8 @@ import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksScreen
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksViewModel
+import com.huaman.bible_hymns_choruses.presentation.notes.NotesScreen
+import com.huaman.bible_hymns_choruses.presentation.notes.NotesViewModel
 import com.huaman.bible_hymns_choruses.presentation.onboarding.FirstLaunchOnboardingSheet
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderIntent
 import com.huaman.bible_hymns_choruses.presentation.reader.BibleReaderScreen
@@ -167,6 +171,12 @@ private enum class MainToolbarTab(
         label = "Guardados",
         selectedIcon = Icons.Rounded.Bookmark,
         unselectedIcon = Icons.Outlined.BookmarkBorder
+    ),
+    NOTES(
+        tab = ActiveAppTab.NOTES,
+        label = "Apuntes",
+        selectedIcon = Icons.Rounded.EditNote,
+        unselectedIcon = Icons.Outlined.EditNote
     )
 }
 
@@ -185,9 +195,11 @@ fun MainScaffold(
     val bibleViewModel: BibleReaderViewModel = hiltViewModel()
     val songsViewModel: SongsViewModel = hiltViewModel()
     val bookmarksViewModel: BookmarksViewModel = hiltViewModel()
+    val notesViewModel: NotesViewModel = hiltViewModel()
     val bibleListState = rememberLazyListState()
     val songsListState = rememberLazyListState()
     val bookmarksListState = rememberLazyListState()
+    val notesListState = rememberLazyListState()
 
     var activeTab by rememberSaveable { mutableStateOf(ActiveAppTab.BIBLE) }
     var visitedTabs by remember { mutableStateOf(setOf(ActiveAppTab.BIBLE)) }
@@ -276,6 +288,16 @@ fun MainScaffold(
                                     onShowSnackbar = showSnackbar,
                                     listState = bookmarksListState,
                                     viewModel = bookmarksViewModel
+                                )
+                            }
+                        }
+
+                        if (ActiveAppTab.NOTES in visitedTabs) {
+                            KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.NOTES) {
+                                NotesScreen(
+                                    onShowSnackbar = showSnackbar,
+                                    listState = notesListState,
+                                    viewModel = notesViewModel
                                 )
                             }
                         }
@@ -446,7 +468,7 @@ private fun MainToolbarTabPill(
     )
 
     val animatedPadding by animateDpAsState(
-        targetValue = if (selected) 20.dp else 12.dp,
+        targetValue = if (selected) 16.dp else 12.dp,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "MainToolbarTabPadding"
     )
