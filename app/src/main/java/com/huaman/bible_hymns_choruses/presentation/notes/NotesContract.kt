@@ -16,6 +16,8 @@ data class NotesUiState(
     val isRecordingAudio: Boolean = false,
     val recordingElapsedSeconds: Int = 0,
     val playingAudioPath: String? = null,
+    val playingElapsedSeconds: Int = 0,
+    val playingDurationSeconds: Int = 0,
     val previewImagePath: String? = null
 )
 

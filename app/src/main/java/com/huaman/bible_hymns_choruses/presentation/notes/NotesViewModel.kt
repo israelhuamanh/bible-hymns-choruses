@@ -3,6 +3,7 @@ package com.huaman.bible_hymns_choruses.presentation.notes
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
@@ -13,6 +14,7 @@ import com.huaman.bible_hymns_choruses.domain.usecase.ManageNotesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,6 +51,7 @@ class NotesViewModel @Inject constructor(
     private var mediaRecorder: MediaRecorder? = null
     private var activeRecordingFile: File? = null
     private var recordingTimerJob: Job? = null
+    private var playbackTimerJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -212,8 +215,8 @@ class NotesViewModel @Inject constructor(
     }
 
     /**
-     * Records ultra-lightweight voice notes in MPEG-4 / AAC-LC mono @ 16 kHz / 24 kbps (~180 KB per minute)
-     * so users can record dozens of voice notes per Apunte without bloating storage.
+     * Records voice notes in universal MPEG-4 / AAC-LC mono @ 44.1 kHz / 32 kbps (~240 KB per minute),
+     * supported across all hardware AAC encoders and decoders on Android.
      */
     private fun startAudioRecording() {
         if (_uiState.value.isRecordingAudio) return
@@ -223,7 +226,7 @@ class NotesViewModel @Inject constructor(
             val dir = File(appContext.filesDir, "notes_audios")
             if (!dir.exists()) dir.mkdirs()
 
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.getDefault()).format(Date())
             val outFile = File(dir, "Voz_$timestamp.m4a")
 
             @Suppress("DEPRECATION")
@@ -238,8 +241,8 @@ class NotesViewModel @Inject constructor(
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 setAudioChannels(1)
-                setAudioSamplingRate(16000)
-                setAudioEncodingBitRate(24000)
+                setAudioSamplingRate(44100)
+                setAudioEncodingBitRate(32000)
                 setOutputFile(outFile.absolutePath)
                 prepare()
                 start()
@@ -278,12 +281,13 @@ class NotesViewModel @Inject constructor(
         mediaRecorder = null
         activeRecordingFile = null
 
+        var stopSucceeded = true
         if (recorder != null) {
-            runCatching { recorder.stop() }
+            stopSucceeded = runCatching { recorder.stop() }.isSuccess
             runCatching { recorder.release() }
         }
 
-        if (discard) {
+        if (discard || !stopSucceeded) {
             runCatching { recordedFile?.delete() }
             _uiState.update {
                 it.copy(
@@ -291,9 +295,12 @@ class NotesViewModel @Inject constructor(
                     recordingElapsedSeconds = 0
                 )
             }
+            if (!discard && !stopSucceeded) {
+                _effects.tryEmit(NotesEffect.ShowMessage("Grabación demasiado corta, mantén al menos 1 segundo"))
+            }
         } else {
             val validPath = recordedFile
-                ?.takeIf { it.exists() && it.length() > 0L }
+                ?.takeIf { it.exists() && it.length() > 256L }
                 ?.absolutePath
             _uiState.update { state ->
                 state.copy(
@@ -318,17 +325,59 @@ class NotesViewModel @Inject constructor(
             stopAudioRecording(discard = false)
         }
         stopAudioPlayback()
+
+        val audioFile = File(path)
+        if (!audioFile.exists() || audioFile.length() == 0L) {
+            _effects.tryEmit(NotesEffect.ShowMessage("El archivo de audio no se encuentra disponible"))
+            return
+        }
+
         try {
-            val player = MediaPlayer().apply {
-                setDataSource(path)
-                prepare()
-                setOnCompletionListener {
-                    stopAudioPlayback()
-                }
-                start()
+            val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            FileInputStream(audioFile).use { fis ->
+                player.setDataSource(fis.fd)
+                player.prepare()
             }
+            val totalSeconds = ((player.duration.coerceAtLeast(0)) / 1000).coerceAtLeast(1)
+            player.setVolume(1.0f, 1.0f)
+            player.setOnCompletionListener {
+                stopAudioPlayback()
+            }
+            player.setOnErrorListener { _, _, _ ->
+                stopAudioPlayback()
+                _effects.tryEmit(NotesEffect.ShowMessage("Error durante la reproducción del audio"))
+                true
+            }
+            player.start()
             mediaPlayer = player
-            _uiState.update { it.copy(playingAudioPath = path) }
+            _uiState.update {
+                it.copy(
+                    playingAudioPath = path,
+                    playingElapsedSeconds = 0,
+                    playingDurationSeconds = totalSeconds
+                )
+            }
+
+            playbackTimerJob?.cancel()
+            playbackTimerJob = viewModelScope.launch {
+                while (isActive && mediaPlayer != null) {
+                    val currentSec = runCatching {
+                        (mediaPlayer?.currentPosition ?: 0) / 1000
+                    }.getOrDefault(0)
+                    _uiState.update { state ->
+                        state.copy(
+                            playingElapsedSeconds = currentSec.coerceIn(0, state.playingDurationSeconds)
+                        )
+                    }
+                    delay(250L)
+                }
+            }
         } catch (_: Exception) {
             stopAudioPlayback()
             _effects.tryEmit(NotesEffect.ShowMessage("No se pudo reproducir el audio"))
@@ -336,10 +385,22 @@ class NotesViewModel @Inject constructor(
     }
 
     private fun stopAudioPlayback() {
-        runCatching { mediaPlayer?.stop() }
+        playbackTimerJob?.cancel()
+        playbackTimerJob = null
+        runCatching {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+        }
         runCatching { mediaPlayer?.release() }
         mediaPlayer = null
-        _uiState.update { it.copy(playingAudioPath = null) }
+        _uiState.update {
+            it.copy(
+                playingAudioPath = null,
+                playingElapsedSeconds = 0,
+                playingDurationSeconds = 0
+            )
+        }
     }
 
     /**

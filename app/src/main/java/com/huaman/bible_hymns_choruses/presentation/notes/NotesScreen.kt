@@ -191,6 +191,8 @@ fun NotesScreen(
                     NoteCard(
                         note = note,
                         playingAudioPath = uiState.playingAudioPath,
+                        playingElapsedSeconds = uiState.playingElapsedSeconds,
+                        playingDurationSeconds = uiState.playingDurationSeconds,
                         onClick = { onOpenNoteEditor(note.id) },
                         onToggleAudio = { path -> viewModel.onIntent(NotesIntent.TogglePlayAudio(path)) },
                         onPreviewImage = { path -> viewModel.onIntent(NotesIntent.OpenImagePreview(path)) },
@@ -484,6 +486,8 @@ fun NoteEditorScreen(
                                 index = index + 1,
                                 filePath = audioPath,
                                 isPlaying = uiState.playingAudioPath == audioPath,
+                                playingElapsedSeconds = uiState.playingElapsedSeconds,
+                                playingDurationSeconds = uiState.playingDurationSeconds,
                                 onTogglePlay = { viewModel.onIntent(NotesIntent.TogglePlayAudio(audioPath)) },
                                 onRemove = { viewModel.onIntent(NotesIntent.RemoveAudioPath(audioPath)) }
                             )
@@ -509,6 +513,8 @@ fun NoteEditorScreen(
 private fun NoteCard(
     note: NoteItem,
     playingAudioPath: String?,
+    playingElapsedSeconds: Int,
+    playingDurationSeconds: Int,
     onClick: () -> Unit,
     onToggleAudio: (String) -> Unit,
     onPreviewImage: (String) -> Unit,
@@ -591,6 +597,8 @@ private fun NoteCard(
                             index = index + 1,
                             filePath = audioPath,
                             isPlaying = playingAudioPath == audioPath,
+                            playingElapsedSeconds = playingElapsedSeconds,
+                            playingDurationSeconds = playingDurationSeconds,
                             onTogglePlay = { onToggleAudio(audioPath) },
                             onRemove = null
                         )
@@ -745,6 +753,8 @@ private fun AudioAttachmentRow(
     index: Int,
     filePath: String,
     isPlaying: Boolean,
+    playingElapsedSeconds: Int,
+    playingDurationSeconds: Int,
     onTogglePlay: () -> Unit,
     onRemove: (() -> Unit)?
 ) {
@@ -788,7 +798,11 @@ private fun AudioAttachmentRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (isPlaying) "Reproduciendo..." else "AAC ligero · $sizeKb KB",
+                    text = if (isPlaying) {
+                        "Reproduciendo ${formatDurationSeconds(playingElapsedSeconds)} / ${formatDurationSeconds(playingDurationSeconds)}"
+                    } else {
+                        "Toca ▶ para escuchar · $sizeKb KB"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
