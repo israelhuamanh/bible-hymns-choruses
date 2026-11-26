@@ -2,11 +2,14 @@
 
 package com.huaman.bible_hymns_choruses.presentation.notes
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,26 +19,31 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Button
@@ -50,13 +58,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,18 +73,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huaman.bible_hymns_choruses.domain.model.NoteItem
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
 fun NotesScreen(
+    onOpenNoteEditor: (noteId: Int) -> Unit,
     onShowSnackbar: (String) -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
@@ -86,26 +99,11 @@ fun NotesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.onIntent(NotesIntent.AttachImageUri(uri.toString()))
-        }
-    }
-
-    val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.onIntent(NotesIntent.AttachAudioUri(uri.toString()))
-        }
-    }
-
     LaunchedEffect(Unit) {
         viewModel.effects.collect { effect ->
             when (effect) {
                 is NotesEffect.ShowMessage -> onShowSnackbar(effect.message)
+                is NotesEffect.NoteSaved -> Unit
             }
         }
     }
@@ -128,8 +126,11 @@ fun NotesScreen(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
+            // From M3 (component-tokens.md -> ButtonSmall):
+            // ContainerHeight = 40.0.dp, LeadingSpace = 16.0.dp, TrailingSpace = 16.0.dp,
+            // IconSize = 20.0.dp, IconLabelSpace = 8.0.dp
             Button(
-                onClick = { viewModel.onIntent(NotesIntent.OpenNewNote) },
+                onClick = { onOpenNoteEditor(0) },
                 shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 modifier = Modifier.height(40.dp)
@@ -169,7 +170,7 @@ fun NotesScreen(
                         style = MaterialTheme.typography.titleMediumEmphasized
                     )
                     Text(
-                        text = "Crea apuntes de estudio o predicaciones con título, texto, imágenes y audios sin conexión.",
+                        text = "Crea apuntes con título, texto, grabaciones de voz e imágenes sin conexión.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -190,8 +191,9 @@ fun NotesScreen(
                     NoteCard(
                         note = note,
                         playingAudioPath = uiState.playingAudioPath,
-                        onClick = { viewModel.onIntent(NotesIntent.OpenEditNote(note)) },
+                        onClick = { onOpenNoteEditor(note.id) },
                         onToggleAudio = { path -> viewModel.onIntent(NotesIntent.TogglePlayAudio(path)) },
+                        onPreviewImage = { path -> viewModel.onIntent(NotesIntent.OpenImagePreview(path)) },
                         onDelete = { viewModel.onIntent(NotesIntent.DeleteNote(note.id)) }
                     )
                 }
@@ -199,29 +201,306 @@ fun NotesScreen(
         }
     }
 
-    if (uiState.isEditorVisible) {
-        NoteEditorSheet(
-            isEditing = uiState.editingNoteId != 0,
-            title = uiState.draftTitle,
-            content = uiState.draftContent,
-            imagePaths = uiState.draftImagePaths,
-            audioPaths = uiState.draftAudioPaths,
-            playingAudioPath = uiState.playingAudioPath,
-            onUpdateTitle = { viewModel.onIntent(NotesIntent.UpdateTitle(it)) },
-            onUpdateContent = { viewModel.onIntent(NotesIntent.UpdateContent(it)) },
-            onPickImage = {
-                imagePickerLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+    val previewPath = uiState.previewImagePath
+    if (previewPath != null) {
+        ProportionalImagePreviewDialog(
+            filePath = previewPath,
+            onDismiss = { viewModel.onIntent(NotesIntent.OpenImagePreview(null)) }
+        )
+    }
+}
+
+/**
+ * Dedicated full-screen window for creating or editing an Apunte (navigated via [AppRoute.NoteEditorRoute]),
+ * supporting multiple in-app voice recordings (AAC-LC 16kHz/24kbps) and responsive image attachments.
+ */
+@Composable
+fun NoteEditorScreen(
+    noteId: Int,
+    onNavigateBack: () -> Unit,
+    onShowSnackbar: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: NotesViewModel
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(noteId) {
+        if (noteId == 0) {
+            viewModel.onIntent(NotesIntent.PrepareNewNote)
+        } else {
+            viewModel.onIntent(NotesIntent.LoadNoteForEdit(noteId))
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is NotesEffect.ShowMessage -> onShowSnackbar(effect.message)
+                is NotesEffect.NoteSaved -> onNavigateBack()
+            }
+        }
+    }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.onIntent(NotesIntent.AttachImageUri(uri.toString()))
+        }
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.onIntent(NotesIntent.StartAudioRecording)
+        } else {
+            onShowSnackbar("Permiso de micrófono requerido para grabar notas de voz")
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            // Top App Bar following M3 Expressive Small App Bar tokens
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            if (uiState.isRecordingAudio) {
+                                viewModel.onIntent(NotesIntent.CancelAudioRecording)
+                            }
+                            onNavigateBack()
+                        },
+                        shapes = IconButtonDefaults.shapes(
+                            shape = IconButtonDefaults.smallRoundShape,
+                            pressedShape = IconButtonDefaults.smallPressedShape
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Volver"
+                        )
+                    }
+
+                    Text(
+                        text = if (noteId == 0) "Nuevo apunte" else "Editar apunte",
+                        style = MaterialTheme.typography.titleLargeEmphasized,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Button(
+                    onClick = { viewModel.onIntent(NotesIntent.SaveNote) },
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text(
+                        text = "Guardar",
+                        style = MaterialTheme.typography.labelLargeEmphasized
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Visual hierarchy: Title field uses titleLargeEmphasized
+                OutlinedTextField(
+                    value = uiState.draftTitle,
+                    onValueChange = { viewModel.onIntent(NotesIntent.UpdateTitle(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.titleLargeEmphasized,
+                    label = { Text("Título del apunte") },
+                    placeholder = { Text("Ej. Predicación dominical, Estudio bíblico...") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    )
                 )
-            },
-            onRemoveImage = { viewModel.onIntent(NotesIntent.RemoveImagePath(it)) },
-            onPickAudio = {
-                audioPickerLauncher.launch("audio/*")
-            },
-            onRemoveAudio = { viewModel.onIntent(NotesIntent.RemoveAudioPath(it)) },
-            onToggleAudio = { viewModel.onIntent(NotesIntent.TogglePlayAudio(it)) },
-            onSave = { viewModel.onIntent(NotesIntent.SaveNote) },
-            onDismiss = { viewModel.onIntent(NotesIntent.DismissEditor) }
+
+                // Body content field uses bodyLarge
+                OutlinedTextField(
+                    value = uiState.draftContent,
+                    onValueChange = { viewModel.onIntent(NotesIntent.UpdateContent(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    label = { Text("Contenido del apunte") },
+                    placeholder = { Text("Escribe aquí tus ideas, bosquejos o reflexiones...") },
+                    minLines = 6,
+                    maxLines = 16,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    )
+                )
+
+                // Action Row: In-app Voice Recorder + Image Picker (M3 ButtonSmall tokens: 40dp height, 20dp icon, 8dp space)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (uiState.isRecordingAudio) {
+                        Button(
+                            onClick = { viewModel.onIntent(NotesIntent.StopAudioRecording) },
+                            shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Stop,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Detener (${formatDurationSeconds(uiState.recordingElapsedSeconds)})",
+                                style = MaterialTheme.typography.labelLargeEmphasized,
+                                maxLines = 1
+                            )
+                        }
+                    } else {
+                        FilledTonalButton(
+                            onClick = {
+                                val hasMicPerm = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasMicPerm) {
+                                    viewModel.onIntent(NotesIntent.StartAudioRecording)
+                                } else {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                            shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Grabar audio",
+                                style = MaterialTheme.typography.labelLargeEmphasized,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Image,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Agregar imagen",
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Responsive Images Section
+                if (uiState.draftImagePaths.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Imágenes (${uiState.draftImagePaths.size})",
+                            style = MaterialTheme.typography.titleSmallEmphasized,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(uiState.draftImagePaths, key = { it }) { path ->
+                                ResponsiveImageThumbnail(
+                                    filePath = path,
+                                    onClick = { viewModel.onIntent(NotesIntent.OpenImagePreview(path)) },
+                                    onRemove = { viewModel.onIntent(NotesIntent.RemoveImagePath(path)) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Multiple Voice Recordings Section
+                if (uiState.draftAudioPaths.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Grabaciones de voz (${uiState.draftAudioPaths.size})",
+                            style = MaterialTheme.typography.titleSmallEmphasized,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        uiState.draftAudioPaths.forEachIndexed { index, audioPath ->
+                            AudioAttachmentRow(
+                                index = index + 1,
+                                filePath = audioPath,
+                                isPlaying = uiState.playingAudioPath == audioPath,
+                                onTogglePlay = { viewModel.onIntent(NotesIntent.TogglePlayAudio(audioPath)) },
+                                onRemove = { viewModel.onIntent(NotesIntent.RemoveAudioPath(audioPath)) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    val previewPath = uiState.previewImagePath
+    if (previewPath != null) {
+        ProportionalImagePreviewDialog(
+            filePath = previewPath,
+            onDismiss = { viewModel.onIntent(NotesIntent.OpenImagePreview(null)) }
         )
     }
 }
@@ -232,6 +511,7 @@ private fun NoteCard(
     playingAudioPath: String?,
     onClick: () -> Unit,
     onToggleAudio: (String) -> Unit,
+    onPreviewImage: (String) -> Unit,
     onDelete: () -> Unit
 ) {
     // From M3 (references/tokens.md & SKILL.md):
@@ -259,7 +539,6 @@ private fun NoteCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Strong visual hierarchy between Title (titleLargeEmphasized) and Body content (bodyMedium)
                     Text(
                         text = note.title.ifBlank { "Apunte sin título" },
                         style = MaterialTheme.typography.titleLargeEmphasized,
@@ -296,8 +575,9 @@ private fun NoteCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(note.imagePaths, key = { it }) { path ->
-                        LocalImageThumbnail(
+                        ResponsiveImageThumbnail(
                             filePath = path,
+                            onClick = { onPreviewImage(path) },
                             onRemove = null
                         )
                     }
@@ -306,8 +586,9 @@ private fun NoteCard(
 
             if (note.audioPaths.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    note.audioPaths.forEach { audioPath ->
+                    note.audioPaths.forEachIndexed { index, audioPath ->
                         AudioAttachmentRow(
+                            index = index + 1,
                             filePath = audioPath,
                             isPlaying = playingAudioPath == audioPath,
                             onTogglePlay = { onToggleAudio(audioPath) },
@@ -320,188 +601,20 @@ private fun NoteCard(
     }
 }
 
+/**
+ * Responsive image thumbnail proportional to screen width so images never take over the screen,
+ * adapting across compact phones, foldables, and tablets.
+ */
 @Composable
-private fun NoteEditorSheet(
-    isEditing: Boolean,
-    title: String,
-    content: String,
-    imagePaths: List<String>,
-    audioPaths: List<String>,
-    playingAudioPath: String?,
-    onUpdateTitle: (String) -> Unit,
-    onUpdateContent: (String) -> Unit,
-    onPickImage: () -> Unit,
-    onRemoveImage: (String) -> Unit,
-    onPickAudio: () -> Unit,
-    onRemoveAudio: (String) -> Unit,
-    onToggleAudio: (String) -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = if (isEditing) "Editar apunte" else "Nuevo apunte",
-                style = MaterialTheme.typography.headlineSmallEmphasized
-            )
-
-            // Hierarchy: Title field uses titleLargeEmphasized so it stands out from content
-            OutlinedTextField(
-                value = title,
-                onValueChange = onUpdateTitle,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.titleLargeEmphasized,
-                label = { Text("Título del apunte") },
-                placeholder = { Text("Ej. Predicación dominical, Estudio de Romanos...") },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                )
-            )
-
-            // Body content field uses bodyLarge
-            OutlinedTextField(
-                value = content,
-                onValueChange = onUpdateContent,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyLarge,
-                label = { Text("Contenido del apunte") },
-                placeholder = { Text("Escribe aquí tus ideas, bosquejos o reflexiones...") },
-                minLines = 5,
-                maxLines = 12,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                )
-            )
-
-            // Media attachment triggers (Images & Audio) using M3 ButtonSmall tokens (40dp height, 20dp icon, 8dp gap)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledTonalButton(
-                    onClick = onPickImage,
-                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Image,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Subir imagen",
-                        style = MaterialTheme.typography.labelLargeEmphasized,
-                        maxLines = 1
-                    )
-                }
-
-                FilledTonalButton(
-                    onClick = onPickAudio,
-                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AudioFile,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Subir audio",
-                        style = MaterialTheme.typography.labelLargeEmphasized,
-                        maxLines = 1
-                    )
-                }
-            }
-
-            if (imagePaths.isNotEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(imagePaths, key = { it }) { path ->
-                        LocalImageThumbnail(
-                            filePath = path,
-                            onRemove = { onRemoveImage(path) }
-                        )
-                    }
-                }
-            }
-
-            if (audioPaths.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    audioPaths.forEach { audioPath ->
-                        AudioAttachmentRow(
-                            filePath = audioPath,
-                            isPlaying = playingAudioPath == audioPath,
-                            onTogglePlay = { onToggleAudio(audioPath) },
-                            onRemove = { onRemoveAudio(audioPath) }
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onDismiss,
-                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Text(
-                        text = "Cancelar",
-                        style = MaterialTheme.typography.labelLargeEmphasized
-                    )
-                }
-
-                Button(
-                    onClick = onSave,
-                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                ) {
-                    Text(
-                        text = "Guardar apunte",
-                        style = MaterialTheme.typography.labelLargeEmphasized
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalImageThumbnail(
+private fun ResponsiveImageThumbnail(
     filePath: String,
+    onClick: () -> Unit,
     onRemove: (() -> Unit)?
 ) {
+    val configuration = LocalConfiguration.current
+    val thumbWidth: Dp = (configuration.screenWidthDp.dp * 0.34f).coerceIn(112.dp, 180.dp)
+    val thumbHeight: Dp = (thumbWidth * 0.78f).coerceIn(88.dp, 140.dp)
+
     val imageBitmap by produceState<ImageBitmap?>(initialValue = null, key1 = filePath) {
         value = withContext(Dispatchers.IO) {
             runCatching {
@@ -513,14 +626,16 @@ private fun LocalImageThumbnail(
 
     Box(
         modifier = Modifier
-            .size(96.dp)
+            .width(thumbWidth)
+            .height(thumbHeight)
             .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
     ) {
         val bmp = imageBitmap
         if (bmp != null) {
             Image(
                 bitmap = bmp,
-                contentDescription = "Imagen adjunta",
+                contentDescription = "Ver imagen",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -561,14 +676,80 @@ private fun LocalImageThumbnail(
     }
 }
 
+/**
+ * Proportional responsive image viewer dialog (max 86% screen width, 62% screen height, 28dp M3 dialog radius)
+ * so the user can inspect any attached image clearly without occupying the entire window.
+ */
+@Composable
+private fun ProportionalImagePreviewDialog(
+    filePath: String,
+    onDismiss: () -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val maxDialogWidth = (configuration.screenWidthDp.dp * 0.86f).coerceIn(260.dp, 560.dp)
+    val maxDialogHeight = (configuration.screenHeightDp.dp * 0.62f).coerceIn(240.dp, 620.dp)
+
+    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, key1 = filePath) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                BitmapFactory.decodeFile(filePath)?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            shadowElevation = 6.dp,
+            modifier = Modifier
+                .widthIn(max = maxDialogWidth)
+                .heightIn(max = maxDialogHeight)
+        ) {
+            Box(modifier = Modifier.padding(12.dp)) {
+                val bmp = imageBitmap
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = "Vista previa de imagen",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                }
+
+                FilledTonalIconButton(
+                    onClick = onDismiss,
+                    shapes = IconButtonDefaults.shapes(
+                        shape = IconButtonDefaults.smallRoundShape,
+                        pressedShape = IconButtonDefaults.smallPressedShape
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Cerrar vista previa"
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AudioAttachmentRow(
+    index: Int,
     filePath: String,
     isPlaying: Boolean,
     onTogglePlay: () -> Unit,
     onRemove: (() -> Unit)?
 ) {
-    val displayName = File(filePath).name.substringAfter("_", File(filePath).name)
+    val file = File(filePath)
+    val sizeKb = (file.length() / 1024L).coerceAtLeast(1L)
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -589,7 +770,7 @@ private fun AudioAttachmentRow(
                     shape = IconButtonDefaults.smallRoundShape,
                     pressedShape = IconButtonDefaults.smallPressedShape
                 ),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
@@ -600,14 +781,14 @@ private fun AudioAttachmentRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = displayName,
+                    text = "Nota de voz #$index",
                     style = MaterialTheme.typography.labelLargeEmphasized,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (isPlaying) "Reproduciendo..." else "Audio guardado",
+                    text = if (isPlaying) "Reproduciendo..." else "AAC ligero · $sizeKb KB",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
@@ -617,12 +798,18 @@ private fun AudioAttachmentRow(
                 IconButton(onClick = onRemove) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "Quitar audio",
+                        contentDescription = "Eliminar grabación",
                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
     }
+}
+
+private fun formatDurationSeconds(totalSeconds: Int): String {
+    val mins = totalSeconds / 60
+    val secs = totalSeconds % 60
+    return String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
 }

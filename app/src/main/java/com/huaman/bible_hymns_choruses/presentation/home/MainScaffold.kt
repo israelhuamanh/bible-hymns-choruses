@@ -11,6 +11,7 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -58,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,6 +91,7 @@ import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksScreen
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksViewModel
+import com.huaman.bible_hymns_choruses.presentation.notes.NoteEditorScreen
 import com.huaman.bible_hymns_choruses.presentation.notes.NotesScreen
 import com.huaman.bible_hymns_choruses.presentation.notes.NotesViewModel
 import com.huaman.bible_hymns_choruses.presentation.onboarding.FirstLaunchOnboardingSheet
@@ -295,6 +300,9 @@ fun MainScaffold(
                         if (ActiveAppTab.NOTES in visitedTabs) {
                             KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.NOTES) {
                                 NotesScreen(
+                                    onOpenNoteEditor = { noteId ->
+                                        navController.navigate(AppRoute.NoteEditorRoute(noteId))
+                                    },
                                     onShowSnackbar = showSnackbar,
                                     listState = notesListState,
                                     viewModel = notesViewModel
@@ -302,6 +310,16 @@ fun MainScaffold(
                             }
                         }
                     }
+                }
+
+                composable<AppRoute.NoteEditorRoute> { entry ->
+                    val route = entry.toRoute<AppRoute.NoteEditorRoute>()
+                    NoteEditorScreen(
+                        noteId = route.noteId,
+                        onNavigateBack = { navController.popBackStack() },
+                        onShowSnackbar = showSnackbar,
+                        viewModel = notesViewModel
+                    )
                 }
 
                 composable<AppRoute.SongDetailRoute> { entry ->
@@ -366,8 +384,23 @@ fun MainScaffold(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // From M3 (references/components/bars.md, references/tokens.md, SKILL.md):
+                        // - Floating toolbars have elevation by default (Level 2 = 3.dp).
+                        // - Multi-element container borders use outlineVariant at 1.dp (OutlineWidth = 1.0.dp)
+                        //   so the floating dock has a subtle edge and soft shadow in both light and dark themes.
                         HorizontalFloatingToolbar(
                             expanded = true,
+                            modifier = Modifier
+                                .shadow(
+                                    elevation = 3.dp,
+                                    shape = FloatingToolbarDefaults.ContainerShape,
+                                    clip = false
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                                    shape = FloatingToolbarDefaults.ContainerShape
+                                ),
                             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                                 toolbarContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -398,7 +431,17 @@ fun MainScaffold(
                             onClick = {
                                 navController.navigate(AppRoute.GlobalSearchRoute())
                             },
-                            modifier = Modifier.size(56.dp),
+                            modifier = Modifier
+                                .size(56.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                                    shape = FloatingActionButtonDefaults.shape
+                                ),
+                            elevation = FloatingActionButtonDefaults.elevation(
+                                defaultElevation = 3.dp,
+                                pressedElevation = 6.dp
+                            ),
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                         ) {
