@@ -27,6 +27,7 @@ class ManageBookmarksUseCase @Inject constructor(
         colorHex: String = "#D4AF37",
         note: String? = null
     ): Long {
+        bookmarkRepository.deleteBookmarkByReference(type.dbValue, referenceId)
         val entity = BookmarkEntity(
             itemType = type.dbValue,
             referenceId = referenceId,
@@ -37,6 +38,30 @@ class ManageBookmarksUseCase @Inject constructor(
             createdAt = System.currentTimeMillis()
         )
         return bookmarkRepository.saveBookmark(entity)
+    }
+
+    suspend fun updateNote(id: Int, note: String?) {
+        val cleaned = note?.trim()?.takeIf { it.isNotEmpty() }
+        bookmarkRepository.updateBookmarkNote(id, cleaned)
+    }
+
+    suspend fun restore(item: BookmarkItem): Long {
+        val entity = BookmarkEntity(
+            id = item.id,
+            itemType = item.itemType.dbValue,
+            referenceId = item.referenceId,
+            titlePreview = item.titlePreview,
+            contentPreview = item.contentPreview,
+            colorHex = item.colorHex,
+            note = item.note,
+            createdAt = item.createdAt
+        )
+        return bookmarkRepository.saveBookmark(entity)
+    }
+
+    suspend fun resolveVerseLocation(referenceId: Int): Triple<Int, Int, Int>? {
+        val verse = bookmarkRepository.getVerseById(referenceId) ?: return null
+        return Triple(verse.bookId, verse.chapter, verse.verse)
     }
 
     suspend fun removeById(id: Int) = bookmarkRepository.deleteBookmarkById(id)

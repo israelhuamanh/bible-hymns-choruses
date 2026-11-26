@@ -47,8 +47,12 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -73,11 +77,18 @@ fun GlobalSearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank() && uiState.query.isBlank()) {
             viewModel.onIntent(SearchIntent.UpdateQuery(initialQuery))
         }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
     }
 
     Scaffold(
@@ -111,7 +122,9 @@ fun GlobalSearchScreen(
                 OutlinedTextField(
                     value = uiState.query,
                     onValueChange = { viewModel.onIntent(SearchIntent.UpdateQuery(it)) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
                     placeholder = {
                         Text("Cita (Juan 3:16), #104 o palabra clave...")
                     },
@@ -239,7 +252,7 @@ fun GlobalSearchScreen(
                 if (showBible && uiState.result.bibleMatches.isNotEmpty()) {
                     item(key = "header_bible") {
                         Text(
-                            text = "Biblia RVR1960 (${uiState.result.bibleMatches.size})",
+                            text = "Biblia ${uiState.activeVersionId} (${uiState.result.bibleMatches.size})",
                             style = MaterialTheme.typography.titleMediumEmphasized
                         )
                     }
@@ -408,8 +421,9 @@ private fun BibleSearchResultCard(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
+                val verseDisplay = match.verseLabel.ifEmpty { match.verse.toString() }
                 Text(
-                    text = "${match.bookName} ${match.chapter}:${match.verse}",
+                    text = "${match.bookName} ${match.chapter}:$verseDisplay",
                     style = MaterialTheme.typography.labelMediumEmphasized,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )

@@ -50,7 +50,6 @@ class SongsViewModel @Inject constructor(
 
     private fun observeCatalogAndFilters() {
         val catalogFlow = selectedTypeFlow
-            .distinctUntilChanged()
             .flatMapLatest { type -> getSongsCatalogUseCase(type) }
 
         val ftsMatchesFlow = searchQueryFlow
@@ -99,9 +98,11 @@ class SongsViewModel @Inject constructor(
                     displayedSongs = filtered,
                     isDeepFtsActive = rawQuery.trim().length >= 2 && rawQuery.trim().toIntOrNull() == null
                 )
-            }.collect { newState ->
-                _uiState.value = newState
             }
+                .flowOn(Dispatchers.Default)
+                .collect { newState ->
+                    _uiState.value = newState
+                }
         }
     }
 

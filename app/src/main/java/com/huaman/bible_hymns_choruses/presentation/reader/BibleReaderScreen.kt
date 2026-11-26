@@ -18,9 +18,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -31,17 +35,25 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material.icons.rounded.BrightnessAuto
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.FormatSize
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,31 +62,37 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -82,10 +100,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
+import com.huaman.bible_hymns_choruses.core.util.sharePlainText
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
+import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
 import com.huaman.bible_hymns_choruses.domain.model.Testament
 import com.huaman.bible_hymns_choruses.ui.theme.readerBodyTextStyle
+import com.huaman.bible_hymns_choruses.ui.theme.readerHeadingTextStyle
+import com.huaman.bible_hymns_choruses.ui.theme.readerLabelTextStyle
 import kotlin.math.roundToInt
 
 @Composable
@@ -95,11 +118,12 @@ fun BibleReaderScreen(
     highlightVerse: Int? = null,
     onShowSnackbar: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
     viewModel: BibleReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
-    val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     LaunchedEffect(initialBookId, initialChapter, highlightVerse) {
         if (initialBookId != null && initialChapter != null) {
@@ -121,22 +145,13 @@ fun BibleReaderScreen(
                 }
                 is BibleReaderEffect.ShowMessage -> onShowSnackbar(effect.message)
                 is BibleReaderEffect.ScrollToVerse -> {
-                    val idx = uiState.verses.indexOfFirst { it.verse == effect.verseNumber }
+                    val idx = uiState.verses.indexOfFirst {
+                        it.verse <= effect.verseNumber && it.verseEnd >= effect.verseNumber
+                    }
                     if (idx >= 0) {
                         listState.animateScrollToItem(idx)
                     }
                 }
-            }
-        }
-    }
-
-    val readingProgress by remember(uiState.verses) {
-        derivedStateOf {
-            val total = uiState.verses.size
-            if (total <= 1) 1f
-            else {
-                val visible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                ((visible + 1).toFloat() / total.toFloat()).coerceIn(0.05f, 1f)
             }
         }
     }
@@ -147,13 +162,13 @@ fun BibleReaderScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // Top Expressive Header with SplitButton + Typography trigger + WavyProgressIndicator
+            // Top Expressive Header with SplitButton + Version Pill + Typography trigger
             BibleReaderTopHeader(
-                bookName = uiState.currentBook?.name ?: "Biblia RVR1960",
+                bookName = uiState.currentBook?.name ?: "Biblia",
                 chapter = uiState.currentChapter,
-                chapterCount = uiState.currentBook?.chapterCount ?: 1,
-                readingProgress = readingProgress,
+                versionId = uiState.currentVersionId,
                 onOpenBookPicker = { viewModel.onIntent(BibleReaderIntent.ToggleBookPicker(true)) },
+                onOpenVersionPicker = { viewModel.onIntent(BibleReaderIntent.ToggleVersionPicker(true)) },
                 onOpenTypography = { viewModel.onIntent(BibleReaderIntent.ToggleTypographySheet(true)) }
             )
 
@@ -176,17 +191,57 @@ fun BibleReaderScreen(
                 ) { verse ->
                     val isSelected = verse.id in uiState.selectedVerseIds
                     val isBookmarked = verse.id in uiState.bookmarkedVerseIds
-                    val isHighlighted = verse.verse == uiState.highlightedVerseNumber
-                    BibleVerseRow(
-                        verse = verse,
-                        isSelected = isSelected,
-                        isBookmarked = isBookmarked,
-                        isHighlighted = isHighlighted,
-                        fontSizeSp = uiState.preferences.fontSizeSp,
-                        fontWeight = uiState.preferences.fontWeight,
-                        fontGrade = uiState.preferences.fontGrade,
-                        onClick = { viewModel.onIntent(BibleReaderIntent.ToggleVerseSelection(verse.id)) }
-                    )
+                    val isHighlighted = uiState.highlightedVerseNumber?.let { target ->
+                        verse.verse <= target && verse.verseEnd >= target
+                    } ?: false
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (!verse.heading.isNullOrBlank()) {
+                            Text(
+                                text = verse.heading,
+                                style = readerHeadingTextStyle(
+                                    fontSizeSp = uiState.preferences.fontSizeSp,
+                                    bodyFontWeightValue = uiState.preferences.fontWeight
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    end = 4.dp,
+                                    top = if (verse.verse == 1) 4.dp else 14.dp,
+                                    bottom = 4.dp
+                                )
+                            )
+                        }
+
+                        if (!verse.label.isNullOrBlank()) {
+                            Text(
+                                text = verse.label,
+                                style = readerLabelTextStyle(
+                                    fontSizeSp = uiState.preferences.fontSizeSp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    end = 4.dp,
+                                    bottom = 2.dp
+                                )
+                            )
+                        }
+
+                        BibleVerseRow(
+                            verse = verse,
+                            isSelected = isSelected,
+                            isBookmarked = isBookmarked,
+                            isHighlighted = isHighlighted,
+                            fontSizeSp = uiState.preferences.fontSizeSp,
+                            fontWeight = uiState.preferences.fontWeight,
+                            fontGrade = uiState.preferences.fontGrade,
+                            onClick = { viewModel.onIntent(BibleReaderIntent.ToggleVerseSelection(verse.id)) }
+                        )
+                    }
                 }
 
                 // Bottom inline chapter navigation card
@@ -207,7 +262,7 @@ fun BibleReaderScreen(
             }
         }
 
-        // Contextual Verse Selection Action Bar (Copy / Bookmark)
+        // Contextual Verse Selection Action Bar (Copy / Share / Bookmark / Note)
         AnimatedVisibility(
             visible = uiState.selectedVerseIds.isNotEmpty(),
             enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
@@ -216,12 +271,36 @@ fun BibleReaderScreen(
                 slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it / 2 },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp, vertical = 104.dp)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp)
         ) {
             VerseSelectionActionBar(
                 selectedCount = uiState.selectedVerseIds.size,
                 onCopy = { viewModel.onIntent(BibleReaderIntent.CopySelectedVerses) },
+                onShare = {
+                    val book = uiState.currentBook
+                    val selected = uiState.verses.filter { it.id in uiState.selectedVerseIds }
+                    if (book != null && selected.isNotEmpty()) {
+                        val rangeLabel = if (selected.size == 1) {
+                            selected.first().verseLabel.ifEmpty { selected.first().verse.toString() }
+                        } else {
+                            "${selected.first().verse}-${selected.last().verse}"
+                        }
+                        val header = "${book.name} ${uiState.currentChapter}:$rangeLabel (${uiState.currentVersionId})"
+                        val body = selected.joinToString("\n") { v ->
+                            val prefix = v.verseLabel.ifEmpty { v.verse.toString() }
+                            "$prefix. ${v.text}"
+                        }
+                        sharePlainText(
+                            context = context,
+                            text = "$header\n$body",
+                            chooserTitle = "Compartir pasaje"
+                        )
+                        viewModel.onIntent(BibleReaderIntent.ClearSelection)
+                    }
+                },
                 onBookmark = { viewModel.onIntent(BibleReaderIntent.BookmarkSelectedVerses()) },
+                onNote = { viewModel.onIntent(BibleReaderIntent.OpenVerseNoteSheet) },
                 onClear = { viewModel.onIntent(BibleReaderIntent.ClearSelection) }
             )
         }
@@ -242,16 +321,51 @@ fun BibleReaderScreen(
         )
     }
 
-    // Live Typography Settings Sheet (Google Sans Flex Size, Weight, Grade)
+    // Bible Version Picker ModalBottomSheet (RVR1960, RVC, TLA)
+    if (uiState.isVersionPickerVisible) {
+        VersionPickerSheet(
+            versions = uiState.versions,
+            selectedVersionId = uiState.currentVersionId,
+            onSelectVersion = { versionId ->
+                viewModel.onIntent(BibleReaderIntent.SelectVersion(versionId))
+            },
+            onDismiss = { viewModel.onIntent(BibleReaderIntent.ToggleVersionPicker(false)) }
+        )
+    }
+
+    // Personalization Sheet (Font Size & Light/Dark Theme)
     if (uiState.isTypographySheetVisible) {
-        TypographySettingsSheet(
+        PersonalizationSettingsSheet(
             fontSizeSp = uiState.preferences.fontSizeSp,
-            fontWeight = uiState.preferences.fontWeight,
-            fontGrade = uiState.preferences.fontGrade,
+            themeMode = uiState.preferences.themeMode,
             onUpdateFontSize = { viewModel.onIntent(BibleReaderIntent.UpdateFontSize(it)) },
-            onUpdateFontWeight = { viewModel.onIntent(BibleReaderIntent.UpdateFontWeight(it)) },
-            onUpdateFontGrade = { viewModel.onIntent(BibleReaderIntent.UpdateFontGrade(it)) },
+            onUpdateThemeMode = { viewModel.onIntent(BibleReaderIntent.UpdateThemeMode(it)) },
             onDismiss = { viewModel.onIntent(BibleReaderIntent.ToggleTypographySheet(false)) }
+        )
+    }
+
+    // Verse Note Sheet (saves verse + note to Guardados)
+    if (uiState.isVerseNoteSheetVisible) {
+        val selectedVerses = remember(uiState.verses, uiState.selectedVerseIds) {
+            uiState.verses.filter { it.id in uiState.selectedVerseIds }
+        }
+        val bookName = uiState.currentBook?.name ?: "Biblia"
+        val verseNums = selectedVerses.map { it.verse }.sorted()
+        val rangeLabel = if (verseNums.isEmpty()) "" else if (verseNums.size == 1) {
+            selectedVerses.first().verseLabel.ifEmpty { verseNums.first().toString() }
+        } else {
+            "${verseNums.first()}-${verseNums.last()}"
+        }
+        val referenceTitle = "$bookName ${uiState.currentChapter}:$rangeLabel (${uiState.currentVersionId})"
+        val previewPassage = selectedVerses.joinToString(" ") { it.text }
+
+        VerseNoteSheet(
+            referenceTitle = referenceTitle,
+            passagePreview = previewPassage,
+            onSaveNote = { noteText ->
+                viewModel.onIntent(BibleReaderIntent.SaveVerseNote(noteText))
+            },
+            onDismiss = { viewModel.onIntent(BibleReaderIntent.DismissVerseNoteSheet) }
         )
     }
 }
@@ -260,87 +374,80 @@ fun BibleReaderScreen(
 private fun BibleReaderTopHeader(
     bookName: String,
     chapter: Int,
-    chapterCount: Int,
-    readingProgress: Float,
+    versionId: String,
     onOpenBookPicker: () -> Unit,
+    onOpenVersionPicker: () -> Unit,
     onOpenTypography: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SplitButtonLayout(
-                leadingButton = {
-                    SplitButtonDefaults.LeadingButton(
-                        onClick = onOpenBookPicker
-                    ) {
-                        Text(
-                            text = "$bookName $chapter",
-                            style = MaterialTheme.typography.titleMediumEmphasized,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                },
-                trailingButton = {
-                    SplitButtonDefaults.TrailingButton(
-                        checked = false,
-                        onCheckedChange = { onOpenBookPicker() }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.ExpandMore,
-                            contentDescription = "Elegir libro y capítulo"
-                        )
-                    }
-                }
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        SplitButtonLayout(
+            leadingButton = {
+                SplitButtonDefaults.LeadingButton(
+                    onClick = onOpenBookPicker
                 ) {
                     Text(
-                        text = "RVR1960 · $chapter/$chapterCount",
-                        style = MaterialTheme.typography.labelMediumEmphasized,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        text = "$bookName $chapter",
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                FilledTonalIconButton(
-                    onClick = onOpenTypography,
-                    shapes = IconButtonDefaults.shapes(
-                        shape = IconButtonDefaults.smallRoundShape,
-                        pressedShape = IconButtonDefaults.smallPressedShape
-                    )
+            },
+            trailingButton = {
+                SplitButtonDefaults.TrailingButton(
+                    checked = false,
+                    onCheckedChange = { onOpenBookPicker() }
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.FormatSize,
-                        contentDescription = "Ajustar tipografía"
+                        imageVector = Icons.Rounded.ExpandMore,
+                        contentDescription = "Elegir libro y capítulo"
                     )
                 }
             }
-        }
-
-        LinearWavyProgressIndicator(
-            progress = { readingProgress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
         )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalButton(
+                onClick = onOpenVersionPicker,
+                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                contentPadding = PaddingValues(start = 16.dp, end = 12.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Text(
+                    text = versionId,
+                    style = MaterialTheme.typography.labelLargeEmphasized,
+                    maxLines = 1
+                )
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Rounded.ExpandMore,
+                    contentDescription = "Cambiar versión de la Biblia",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = onOpenTypography,
+                shapes = IconButtonDefaults.shapes(
+                    shape = IconButtonDefaults.smallRoundShape,
+                    pressedShape = IconButtonDefaults.smallPressedShape
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Tune,
+                    contentDescription = "Personalización"
+                )
+            }
+        }
     }
 }
 
@@ -402,14 +509,16 @@ private fun BibleVerseRow(
         ) {
             Text(
                 text = buildAnnotatedString {
-                    withStyle(
-                        SpanStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = (fontSizeSp * 0.78f).sp
-                        )
-                    ) {
-                        append("${verse.verse}  ")
+                    if (verse.verseLabel.isNotEmpty()) {
+                        withStyle(
+                            SpanStyle(
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = (fontSizeSp * 0.78f).sp
+                            )
+                        ) {
+                            append("${verse.verseLabel}  ")
+                        }
                     }
                     append(verse.text)
                 },
@@ -466,7 +575,7 @@ private fun ChapterNavigationButtonGroup(
                 pressedShape = IconButtonDefaults.smallPressedShape
             )
         ) {
-            Icon(Icons.Rounded.FormatSize, contentDescription = "Tipografía")
+            Icon(Icons.Rounded.Tune, contentDescription = "Personalización")
         }
 
         Button(
@@ -489,42 +598,83 @@ private fun ChapterNavigationButtonGroup(
 private fun VerseSelectionActionBar(
     selectedCount: Int,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
     onBookmark: () -> Unit,
+    onNote: () -> Unit,
     onClear: () -> Unit
 ) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.inverseSurface,
-        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        tonalElevation = 4.dp,
         shadowElevation = 6.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "$selectedCount sel.",
+                text = "$selectedCount",
                 style = MaterialTheme.typography.labelLargeEmphasized,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 6.dp)
             )
-            FilledTonalButton(
+            FilledTonalIconButton(
                 onClick = onCopy,
-                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight)
+                shapes = IconButtonDefaults.shapes(
+                    shape = IconButtonDefaults.smallRoundShape,
+                    pressedShape = IconButtonDefaults.smallPressedShape
+                ),
+                modifier = Modifier.size(40.dp)
             ) {
-                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = "Copiar versículos",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onShare,
+                shapes = IconButtonDefaults.shapes(
+                    shape = IconButtonDefaults.smallRoundShape,
+                    pressedShape = IconButtonDefaults.smallPressedShape
+                ),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Share,
+                    contentDescription = "Compartir versículos",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            FilledTonalButton(
+                onClick = onNote,
+                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Icon(Icons.Rounded.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Copiar")
+                Text("Nota", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
             }
             Button(
                 onClick = onBookmark,
-                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight)
+                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.height(40.dp)
             ) {
                 Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Guardar")
+                Text("Guardar", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
             }
-            FilledTonalIconButton(onClick = onClear) {
+            FilledTonalIconButton(
+                onClick = onClear,
+                modifier = Modifier.size(40.dp)
+            ) {
                 Icon(Icons.Rounded.Close, contentDescription = "Cancelar selección")
             }
         }
@@ -702,13 +852,11 @@ private fun BookChapterPickerSheet(
 }
 
 @Composable
-private fun TypographySettingsSheet(
+private fun PersonalizationSettingsSheet(
     fontSizeSp: Float,
-    fontWeight: Int,
-    fontGrade: Int,
+    themeMode: ThemeMode,
     onUpdateFontSize: (Float) -> Unit,
-    onUpdateFontWeight: (Int) -> Unit,
-    onUpdateFontGrade: (Int) -> Unit,
+    onUpdateThemeMode: (ThemeMode) -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -720,10 +868,10 @@ private fun TypographySettingsSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text(
-                text = "Tipografía Google Sans Flex",
+                text = "Personalización",
                 style = MaterialTheme.typography.headlineSmallEmphasized
             )
 
@@ -732,15 +880,27 @@ private fun TypographySettingsSheet(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Lámpara es a mis pies tu palabra, y lumbrera a mi camino.",
-                    style = readerBodyTextStyle(fontSizeSp, fontWeight, fontGrade),
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "La palabra de Dios",
+                        style = readerHeadingTextStyle(fontSizeSp = fontSizeSp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Lámpara es a mis pies tu palabra, y lumbrera a mi camino.",
+                        style = readerBodyTextStyle(fontSizeSp = fontSizeSp)
+                    )
+                }
             }
 
-            Column {
-                Text("Tamaño: ${fontSizeSp.roundToInt()} sp", style = MaterialTheme.typography.labelLargeEmphasized)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Tamaño de letra: ${fontSizeSp.roundToInt()} sp",
+                    style = MaterialTheme.typography.titleSmallEmphasized
+                )
                 Slider(
                     value = fontSizeSp,
                     onValueChange = onUpdateFontSize,
@@ -748,24 +908,293 @@ private fun TypographySettingsSheet(
                 )
             }
 
-            Column {
-                Text("Grosor (Weight): $fontWeight", style = MaterialTheme.typography.labelLargeEmphasized)
-                Slider(
-                    value = fontWeight.toFloat(),
-                    onValueChange = { onUpdateFontWeight(it.roundToInt()) },
-                    valueRange = 400f..700f,
-                    steps = 2
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Tema",
+                    style = MaterialTheme.typography.titleSmallEmphasized
                 )
-            }
-
-            Column {
-                Text("Grado (Grade): $fontGrade", style = MaterialTheme.typography.labelLargeEmphasized)
-                Slider(
-                    value = fontGrade.toFloat(),
-                    onValueChange = { onUpdateFontGrade(it.roundToInt()) },
-                    valueRange = -50f..150f
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val themeOptions = listOf(
+                        Triple(ThemeMode.SYSTEM, "Auto", Icons.Rounded.BrightnessAuto),
+                        Triple(ThemeMode.LIGHT, "Claro", Icons.Rounded.LightMode),
+                        Triple(ThemeMode.DARK, "Oscuro", Icons.Rounded.DarkMode)
+                    )
+                    themeOptions.forEach { (mode, label, icon) ->
+                        val checked = themeMode == mode
+                        ToggleButton(
+                            checked = checked,
+                            onCheckedChange = { onUpdateThemeMode(mode) },
+                            shapes = ToggleButtonDefaults.shapesFor(ToggleButtonDefaults.MinHeight),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                style = if (checked) {
+                                    MaterialTheme.typography.labelLargeEmphasized
+                                } else {
+                                    MaterialTheme.typography.labelLarge
+                                },
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+@Composable
+private fun VersionPickerSheet(
+    versions: List<BibleVersion>,
+    selectedVersionId: String,
+    onSelectVersion: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val displayVersions = remember(versions) {
+        versions.ifEmpty {
+            listOf(
+                BibleVersion("RVR1960", "Reina Valera 1960", "Biblia Reina Valera 1960", "", 1),
+                BibleVersion("RVC", "Reina Valera Contemporánea", "Reina Valera Contemporánea", "", 2),
+                BibleVersion("TLA", "Traducción en Lenguaje Actual", "Traducción en Lenguaje Actual", "", 3)
+            )
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Versión de la Biblia",
+                style = MaterialTheme.typography.headlineSmallEmphasized
+            )
+
+            displayVersions.forEach { version ->
+                val isSelected = version.id == selectedVersionId
+                val containerColor by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                    animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                    label = "VersionItemColor"
+                )
+                val cornerRadius by animateDpAsState(
+                    targetValue = if (isSelected) 20.dp else 16.dp,
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                    label = "VersionItemCornerMorph"
+                )
+
+                Surface(
+                    onClick = { onSelectVersion(version.id) },
+                    shape = RoundedCornerShape(cornerRadius),
+                    color = containerColor,
+                    border = if (isSelected) {
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                            contentColor = if (isSelected) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        ) {
+                            Text(
+                                text = version.id,
+                                style = MaterialTheme.typography.labelLargeEmphasized,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = version.name,
+                                style = if (isSelected) {
+                                    MaterialTheme.typography.titleMediumEmphasized
+                                } else {
+                                    MaterialTheme.typography.titleMedium
+                                },
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                            Text(
+                                text = "Disponible sin conexión",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = "Versión seleccionada",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VerseNoteSheet(
+    referenceTitle: String,
+    passagePreview: String,
+    onSaveNote: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var noteText by rememberSaveable { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        contentWindowInsets = { WindowInsets.ime },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Nota del versículo",
+                style = MaterialTheme.typography.headlineSmallEmphasized
+            )
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = referenceTitle,
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = passagePreview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = noteText,
+                onValueChange = { noteText = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                label = { Text("Escribe tu nota sobre este versículo") },
+                placeholder = { Text("Reflexión, enseñanza o recordatorio...") },
+                minLines = 3,
+                maxLines = 6,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text("Cancelar", style = MaterialTheme.typography.labelLargeEmphasized)
+                }
+
+                Button(
+                    onClick = { onSaveNote(noteText) },
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.BookmarkAdd,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Guardar en Guardados",
+                        style = MaterialTheme.typography.labelLargeEmphasized
+                    )
+                }
+            }
+        }
+    }
+}
+

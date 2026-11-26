@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Circular Emblem Background -->
+    <path android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="46"
+                android:gradientRadius="46"
+                android:type="radial">
+                <item
+                    android:color="#FF523C97"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF2F1A75"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Outer Open Bible Pages -->
+    <path
+        android:fillColor="#FFE4DFFF"
+        android:pathData="M28,50 C28,50 39.5,47 52,52.5 L52,76 C39.5,70.5 28,73.5 28,73.5 Z M80,50 C80,50 68.5,47 56,52.5 L56,76 C68.5,70.5 80,73.5 80,73.5 Z" />
+    <!-- Inner Open Bible Pages -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31,46 C31,46 41.5,43 52,48.5 L52,71.5 C41.5,66 31,69 31,69 Z M77,46 C77,46 66.5,43 56,48.5 L56,71.5 C66.5,66 77,69 77,69 Z" />
+    <!-- Subtle Cross rising from the Bible spine -->
+    <path
+        android:fillColor="#FFFFD8E6"
+        android:pathData="M52.2,26 L55.8,26 L55.8,49 L52.2,49 Z M46.5,32 L61.5,32 L61.5,35.4 L46.5,35.4 Z" />
+    <!-- Musical Praise Note intertwined with the Cross & Scripture -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M62.5,28.5 L65.5,28.5 L65.5,41.2 C65.5,44 63.1,46.2 60,46.2 C57.2,46.2 55,44.3 55,41.8 C55,39.3 57.2,37.4 60,37.4 C60.9,37.4 61.8,37.6 62.5,38 L62.5,28.5 Z M62.5,28.5 C67.5,28.5 71.5,31.2 72.5,35.2 C69.5,33.2 66.5,32.2 62.5,32.2 Z" />
+</vector>

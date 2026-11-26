@@ -19,8 +19,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val appViewModel: MainAppViewModel = hiltViewModel()
-            val prefs by appViewModel.preferences.collectAsStateWithLifecycle()
-            ExpressiveAppTheme(themeMode = prefs.themeMode) {
+            val themeMode by appViewModel.themeMode.collectAsStateWithLifecycle()
+            ExpressiveAppTheme(themeMode = themeMode) {
                 MainScaffold(appViewModel = appViewModel)
             }
         }

@@ -26,8 +26,15 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import fitz  # PyMuPDF
-from PIL import Image
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 try:
     import pytesseract
@@ -46,11 +53,47 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DB_OUTPUT_PATH = PROJECT_ROOT / "app" / "src" / "main" / "assets" / "database" / "bible_hymns_choruses.db"
 PDF_DEFAULT_PATH = Path("/tmp/pdf-melodias-celestiales-asambleas-de-dios.pdf")
 OCR_CACHE_PATH = Path("/tmp/pdf_ocr_cache.json")
-RVR1960_JSON_PATH = Path("/tmp/thiagobodruk-bible/json/es_rvr1960.json")
-RVR1960_FALLBACK_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/es_rvr1960.json"
+MRK214_CACHE_DIR = Path("/tmp/mrk214-bible")
 TESSDATA_DIR = Path("/tmp/tessdata")
 
-# Canonical RVR1960 66 Books Metadata (ID, Testament, Spanish Name, Standard Abbreviation)
+BIBLE_VERSIONS = [
+    {
+        "id": "RVR1960",
+        "name": "Reina Valera 1960",
+        "filename": "RVR1960_vid_149.json",
+        "url": "https://mrk214.github.io/snapshots/es___spa___spa/RVR1960_vid_149.json",
+        "sort_order": 1,
+    },
+    {
+        "id": "RVC",
+        "name": "Reina Valera Contemporánea",
+        "filename": "RVC_vid_146.json",
+        "url": "https://mrk214.github.io/snapshots/es___spa___spa/RVC_vid_146.json",
+        "sort_order": 2,
+    },
+    {
+        "id": "TLA",
+        "name": "Traducción en Lenguaje Actual",
+        "filename": "TLA_vid_176.json",
+        "url": "https://mrk214.github.io/snapshots/es___spa___spa/TLA_vid_176.json",
+        "sort_order": 3,
+    },
+]
+
+# USFM code -> canonical book_id (1..66)
+USFM_TO_BOOK_ID: Dict[str, int] = {
+    "GEN": 1, "EXO": 2, "LEV": 3, "NUM": 4, "DEU": 5, "JOS": 6, "JDG": 7, "RUT": 8,
+    "1SA": 9, "2SA": 10, "1KI": 11, "2KI": 12, "1CH": 13, "2CH": 14, "EZR": 15, "NEH": 16,
+    "EST": 17, "JOB": 18, "PSA": 19, "PRO": 20, "ECC": 21, "SNG": 22, "ISA": 23, "JER": 24,
+    "LAM": 25, "EZK": 26, "DAN": 27, "HOS": 28, "JOL": 29, "AMO": 30, "OBA": 31, "JON": 32,
+    "MIC": 33, "NAM": 34, "HAB": 35, "ZEP": 36, "HAG": 37, "ZEC": 38, "MAL": 39,
+    "MAT": 40, "MRK": 41, "LUK": 42, "JHN": 43, "ACT": 44, "ROM": 45, "1CO": 46, "2CO": 47,
+    "GAL": 48, "EPH": 49, "PHP": 50, "COL": 51, "1TH": 52, "2TH": 53, "1TI": 54, "2TI": 55,
+    "TIT": 56, "PHM": 57, "HEB": 58, "JAS": 59, "1PE": 60, "2PE": 61, "1JN": 62, "2JN": 63,
+    "3JN": 64, "JUD": 65, "REV": 66,
+}
+
+# Canonical 66 Books Metadata (ID, Testament, Spanish Name, Standard Abbreviation)
 CANONICAL_BOOKS: List[Tuple[int, str, str, str]] = [
     # Antiguo Testamento (39 libros)
     (1, "AT", "Génesis", "Gén"),
@@ -243,19 +286,73 @@ def normalize_search_text(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: RVR1960 Bible Extraction
+# Step 1: Multi-Version Bible Extraction (RVR1960, RVC, TLA from mrk214/snapshots)
 # ---------------------------------------------------------------------------
-def load_rvr1960_bible() -> List[Dict]:
-    """Carga el JSON de la Biblia Reina Valera 1960 (66 libros)."""
-    if RVR1960_JSON_PATH.exists():
-        with open(RVR1960_JSON_PATH, "r", encoding="utf-8-sig") as f:
-            return json.load(f)
+def load_bible_versions() -> List[Tuple[Dict, Dict]]:
+    """
+    Carga los snapshots JSON de las 3 versiones en español (RVR1960, RVC, TLA).
+    Usa caché local en /tmp/mrk214-bible/ si existe; de lo contrario descarga el snapshot.
+    """
+    MRK214_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    loaded: List[Tuple[Dict, Dict]] = []
+    for meta in BIBLE_VERSIONS:
+        local_path = MRK214_CACHE_DIR / meta["filename"]
+        if local_path.exists():
+            print(f"[{meta['id']}] Cargando desde {local_path}...")
+            with open(local_path, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+        else:
+            print(f"[{meta['id']}] Descargando desde {meta['url']}...")
+            req = urllib.request.Request(meta["url"], headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read().decode("utf-8-sig")
+            local_path.write_text(raw, encoding="utf-8")
+            data = json.loads(raw)
+        loaded.append((meta, data))
+    return loaded
 
-    print(f"[RVR1960] Descargando desde {RVR1960_FALLBACK_URL}...")
-    req = urllib.request.Request(RVR1960_FALLBACK_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        raw = resp.read().decode("utf-8-sig")
-    return json.loads(raw)
+
+def load_existing_songs(db_path: Path) -> Optional[Tuple[List[Dict], List[Dict]]]:
+    """
+    Si ya existe bible_hymns_choruses.db con himnos y coros verificados, los reutiliza
+    para reconstruir la BD en segundos sin re-ejecutar OCR sobre el PDF.
+    """
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        rows = cur.execute(
+            """
+            SELECT type, number, title, subtitle_en, tonality, category, lyrics, search_text
+            FROM songs
+            ORDER BY type ASC, number ASC
+            """
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return None
+        hymns = []
+        choruses = []
+        for row in rows:
+            item = {
+                "type": row[0],
+                "number": row[1],
+                "title": row[2],
+                "subtitle_en": row[3],
+                "tonality": row[4],
+                "category": row[5],
+                "lyrics": row[6],
+                "search_text": row[7],
+            }
+            if row[0] == "HYMN":
+                hymns.append(item)
+            else:
+                choruses.append(item)
+        print(f"[SONGS] Reutilizando {len(hymns)} himnos y {len(choruses)} coros desde {db_path.name}")
+        return hymns, choruses
+    except sqlite3.Error:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +756,148 @@ def parse_choruses(page_map: Dict[int, Dict[str, str]]) -> List[Dict]:
 # ---------------------------------------------------------------------------
 # Step 5: Build Ultra-Fast SQLite + FTS4 Database (< 5 ms)
 # ---------------------------------------------------------------------------
-def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dict], db_path: Path) -> None:
+def parse_version_verses(
+    version_id: str,
+    version_json: Dict,
+    start_verse_id: int,
+) -> Tuple[List[Tuple], Dict[int, int], int]:
+    """
+    Convierte un snapshot JSON de mrk214/snapshots en filas de `verses`, conservando:
+    - Subtítulos de sección (`section1`, `section2`, `heading1`, `heading2`) en `heading`
+    - Etiquetas de salmos / notas (`label`) en `label`
+    - Rangos de versículos (ej. `1-2` en TLA) en `verse`, `verse_end`, `verse_label`
+    - Orden exacto de lectura dentro de cada capítulo (`item_order`)
+    """
+    verse_rows: List[Tuple] = []
+    chapter_counts: Dict[int, int] = {}
+    verse_id = start_verse_id
+
+    for book_json in version_json["books"]:
+        usfm = book_json["usfm"]
+        book_id = USFM_TO_BOOK_ID.get(usfm)
+        if book_id is None:
+            continue  # Omitir libros deuterocanónicos si existieran
+
+        seen_chapters = set()
+        unique_chapters = []
+        for ch_json in book_json["chapters"]:
+            ch_usfm = ch_json["usfm"]
+            if ch_usfm in seen_chapters:
+                continue
+            seen_chapters.add(ch_usfm)
+            parts = ch_usfm.split(".")
+            if len(parts) < 2 or not parts[1].isdigit():
+                continue
+            unique_chapters.append((int(parts[1]), ch_json))
+
+        chapter_counts[book_id] = len(unique_chapters)
+
+        for ch_num, ch_json in unique_chapters:
+            pending_headings: List[str] = []
+            pending_labels: List[str] = []
+            chapter_verses: List[Dict] = []
+            seen_verse_keys = set()
+            item_order = 1
+
+            for item in ch_json.get("items", []):
+                item_type = item.get("type", "")
+                raw_lines = [ln.strip() for ln in item.get("lines", []) if ln and ln.strip()]
+                if not raw_lines:
+                    continue
+
+                if item_type in ("section1", "section2", "heading1", "heading2"):
+                    pending_headings.append(" ".join(raw_lines))
+                elif item_type == "label":
+                    lbl_text = " ".join(raw_lines)
+                    if lbl_text.lower() == "selah" and chapter_verses:
+                        chapter_verses[-1]["text"] += "\nSelah"
+                        chapter_verses[-1]["search_text"] = normalize_search_text(chapter_verses[-1]["text"])
+                    else:
+                        pending_labels.append(lbl_text)
+                elif item_type == "verse":
+                    vns = item.get("verse_numbers", [])
+                    if not vns:
+                        continue
+                    v_start = int(vns[0])
+                    v_end = int(vns[-1])
+                    v_text = "\n".join(raw_lines)
+                    v_key = (v_start, v_end)
+
+                    # Si es continuación inmediata del mismo versículo sin subtítulo nuevo (ej. tras Selah), unir
+                    if (
+                        chapter_verses
+                        and chapter_verses[-1]["verse"] == v_start
+                        and chapter_verses[-1]["verse_end"] == v_end
+                        and not pending_headings
+                        and not pending_labels
+                    ):
+                        chapter_verses[-1]["text"] += "\n" + v_text
+                        chapter_verses[-1]["search_text"] = normalize_search_text(chapter_verses[-1]["text"])
+                        continue
+
+                    heading = "\n".join(pending_headings) if pending_headings else None
+                    label = "\n".join(pending_labels) if pending_labels else None
+                    pending_headings.clear()
+                    pending_labels.clear()
+
+                    if v_key in seen_verse_keys:
+                        verse_label = ""
+                    elif v_start == v_end:
+                        verse_label = str(v_start)
+                    else:
+                        verse_label = f"{v_start}-{v_end}"
+                    seen_verse_keys.add(v_key)
+
+                    chapter_verses.append(
+                        {
+                            "book_id": book_id,
+                            "chapter": ch_num,
+                            "verse": v_start,
+                            "verse_end": v_end,
+                            "verse_label": verse_label,
+                            "item_order": item_order,
+                            "heading": heading,
+                            "label": label,
+                            "text": v_text,
+                            "search_text": normalize_search_text(v_text),
+                        }
+                    )
+                    item_order += 1
+
+            # Si quedó alguna nota final (ej. Habacuc 3 en RVC), adjuntarla al último versículo
+            if pending_labels and chapter_verses:
+                trailing = "\n".join(pending_labels)
+                chapter_verses[-1]["text"] += "\n" + trailing
+                chapter_verses[-1]["search_text"] = normalize_search_text(chapter_verses[-1]["text"])
+
+            for v in chapter_verses:
+                verse_rows.append(
+                    (
+                        verse_id,
+                        version_id,
+                        v["book_id"],
+                        v["chapter"],
+                        v["verse"],
+                        v["verse_end"],
+                        v["verse_label"],
+                        v["item_order"],
+                        v["heading"],
+                        v["label"],
+                        v["text"],
+                        v["search_text"],
+                    )
+                )
+                verse_id += 1
+
+    return verse_rows, chapter_counts, verse_id
+
+
+def build_database(
+    versions_data: List[Tuple[Dict, Dict]],
+    hymns: List[Dict],
+    choruses: List[Dict],
+    db_path: Path,
+) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     if db_path.exists():
         db_path.unlink()
@@ -667,7 +905,7 @@ def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dic
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
 
-    # Ultra-fast build pragmas required by Fase 1
+    # Ultra-fast build pragmas
     cur.executescript(
         """
         PRAGMA journal_mode = OFF;
@@ -676,9 +914,17 @@ def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dic
         """
     )
 
-    # Create Schema (Room & FTS4 compatible)
+    # Create Schema (Room 2.8 & FTS4 compatible, version 2)
     cur.executescript(
         """
+        CREATE TABLE bible_versions (
+            id TEXT NOT NULL PRIMARY KEY,
+            name TEXT NOT NULL,
+            full_title TEXT NOT NULL,
+            copyright TEXT NOT NULL,
+            sort_order INTEGER NOT NULL
+        );
+
         CREATE TABLE books (
             id INTEGER NOT NULL PRIMARY KEY,
             testament TEXT NOT NULL,
@@ -690,23 +936,26 @@ def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dic
 
         CREATE TABLE verses (
             id INTEGER NOT NULL PRIMARY KEY,
+            version_id TEXT NOT NULL,
             book_id INTEGER NOT NULL,
             chapter INTEGER NOT NULL,
             verse INTEGER NOT NULL,
+            verse_end INTEGER NOT NULL,
+            verse_label TEXT NOT NULL,
+            item_order INTEGER NOT NULL,
+            heading TEXT,
+            label TEXT,
             text TEXT NOT NULL,
             search_text TEXT NOT NULL,
-            FOREIGN KEY(book_id) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            FOREIGN KEY(book_id) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+            FOREIGN KEY(version_id) REFERENCES bible_versions(id) ON UPDATE NO ACTION ON DELETE CASCADE
         );
 
-        CREATE UNIQUE INDEX idx_verses_location ON verses(book_id, chapter, verse);
+        CREATE INDEX idx_verses_location ON verses(version_id, book_id, chapter, item_order);
+        CREATE INDEX idx_verses_ref ON verses(version_id, book_id, chapter, verse, verse_end);
+        CREATE INDEX idx_verses_book_id ON verses(book_id);
 
-        CREATE VIRTUAL TABLE verses_fts USING fts4(
-            content="verses",
-            text,
-            search_text,
-            tokenize=unicode61 "remove_diacritics=2",
-            prefix='2,3,4'
-        );
+        CREATE VIRTUAL TABLE `verses_fts` USING FTS4(`search_text` TEXT NOT NULL, tokenize=unicode61 `remove_diacritics=2`, content=`verses`, prefix=`2,3,4`);
 
         CREATE TABLE songs (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -722,62 +971,50 @@ def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dic
 
         CREATE INDEX idx_songs_type_number ON songs(type, number);
 
-        CREATE VIRTUAL TABLE songs_fts USING fts4(
-            content="songs",
-            title,
-            lyrics,
-            search_text,
-            tokenize=unicode61 "remove_diacritics=2",
-            prefix='2,3,4'
-        );
-
-        CREATE TABLE bookmarks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-            item_type TEXT NOT NULL,
-            reference_id INTEGER NOT NULL,
-            title_preview TEXT NOT NULL,
-            content_preview TEXT NOT NULL,
-            color_hex TEXT NOT NULL,
-            note TEXT,
-            created_at INTEGER NOT NULL
-        );
+        CREATE VIRTUAL TABLE `songs_fts` USING FTS4(`title` TEXT NOT NULL, `lyrics` TEXT NOT NULL, `search_text` TEXT NOT NULL, tokenize=unicode61 `remove_diacritics=2`, content=`songs`, prefix=`2,3,4`);
         """
     )
 
-    # Insert Books & Verses
-    book_rows = []
-    verse_rows = []
-    verse_id = 1
+    # Insert Bible Versions & Parse Verses
+    version_rows = []
+    all_verse_rows: List[Tuple] = []
+    canonical_chapter_counts: Dict[int, int] = {}
+    next_verse_id = 1
 
-    for idx, book_json in enumerate(books_data):
-        book_id, testament, canonical_name, canonical_abbr = CANONICAL_BOOKS[idx]
-        chapters = book_json["chapters"]
-        chapter_count = len(chapters)
-        search_name = normalize_search_text(f"{canonical_name} {canonical_abbr} {book_json.get('name', '')}")
+    for meta, version_json in versions_data:
+        version_id = meta["id"]
+        full_title = version_json.get("local_title", meta["name"])
+        copyright_text = version_json.get("copyright", {}).get("text", "")
+        version_rows.append((version_id, meta["name"], full_title, copyright_text, meta["sort_order"]))
+
+        v_rows, ch_counts, next_verse_id = parse_version_verses(version_id, version_json, next_verse_id)
+        all_verse_rows.extend(v_rows)
+        if not canonical_chapter_counts:
+            canonical_chapter_counts = ch_counts
+
+    # Insert Canonical 66 Books
+    book_rows = []
+    for book_id, testament, canonical_name, canonical_abbr in CANONICAL_BOOKS:
+        chapter_count = canonical_chapter_counts.get(book_id, 1)
+        search_name = normalize_search_text(f"{canonical_name} {canonical_abbr}")
         book_rows.append((book_id, testament, canonical_name, canonical_abbr, search_name, chapter_count))
 
-        for ch_idx, ch_verses in enumerate(chapters, start=1):
-            for v_idx, v_text in enumerate(ch_verses, start=1):
-                clean_v = v_text.strip()
-                verse_rows.append(
-                    (
-                        verse_id,
-                        book_id,
-                        ch_idx,
-                        v_idx,
-                        clean_v,
-                        normalize_search_text(clean_v),
-                    )
-                )
-                verse_id += 1
-
+    cur.executemany(
+        "INSERT INTO bible_versions (id, name, full_title, copyright, sort_order) VALUES (?, ?, ?, ?, ?);",
+        version_rows,
+    )
     cur.executemany(
         "INSERT INTO books (id, testament, name, abbreviation, search_name, chapter_count) VALUES (?, ?, ?, ?, ?, ?);",
         book_rows,
     )
     cur.executemany(
-        "INSERT INTO verses (id, book_id, chapter, verse, text, search_text) VALUES (?, ?, ?, ?, ?, ?);",
-        verse_rows,
+        """
+        INSERT INTO verses (
+            id, version_id, book_id, chapter, verse, verse_end, verse_label,
+            item_order, heading, label, text, search_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        all_verse_rows,
     )
 
     # Insert Songs (Hymns + Choruses)
@@ -802,9 +1039,12 @@ def build_database(books_data: List[Dict], hymns: List[Dict], choruses: List[Dic
         song_rows,
     )
 
-    # Rebuild FTS4 virtual tables and optimize
+    # Rebuild FTS4 virtual tables, register Room v2 identity hash, and optimize
     cur.execute("INSERT INTO verses_fts(verses_fts) VALUES('rebuild');")
     cur.execute("INSERT INTO songs_fts(songs_fts) VALUES('rebuild');")
+    cur.execute("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT);")
+    cur.execute("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2b0a5188f5467d96d8a60714273d9377');")
+    cur.execute("PRAGMA user_version = 2;")
     conn.commit()
 
     cur.execute("PRAGMA optimize;")
@@ -819,6 +1059,7 @@ def verify_database(db_path: Path) -> None:
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
 
+    versions = cur.execute("SELECT id, name FROM bible_versions ORDER BY sort_order ASC;").fetchall()
     books_count = cur.execute("SELECT COUNT(*) FROM books;").fetchone()[0]
     at_count = cur.execute("SELECT COUNT(*) FROM books WHERE testament = 'AT';").fetchone()[0]
     nt_count = cur.execute("SELECT COUNT(*) FROM books WHERE testament = 'NT';").fetchone()[0]
@@ -826,15 +1067,26 @@ def verify_database(db_path: Path) -> None:
     hymns_count = cur.execute("SELECT COUNT(*) FROM songs WHERE type = 'HYMN';").fetchone()[0]
     choruses_count = cur.execute("SELECT COUNT(*) FROM songs WHERE type = 'CHORUS';").fetchone()[0]
 
-    # Benchmark 1: FTS4 Bible search
+    per_version_stats = cur.execute(
+        """
+        SELECT version_id, COUNT(*), SUM(CASE WHEN heading IS NOT NULL THEN 1 ELSE 0 END)
+        FROM verses
+        GROUP BY version_id
+        ORDER BY version_id;
+        """
+    ).fetchall()
+
+    # Benchmark 1: FTS4 Bible search filtered by version
     t0 = time.perf_counter()
     fts_verses = cur.execute(
         """
-        SELECT v.id, v.book_id, b.name AS bookName, b.abbreviation AS bookAbbr, v.chapter, v.verse, v.text
-        FROM verses v
-        JOIN verses_fts fts ON v.id = fts.rowid
+        SELECT v.id, v.version_id, v.book_id, b.name AS bookName, b.abbreviation AS bookAbbr,
+               v.chapter, v.verse, v.verse_end, v.verse_label, v.text
+        FROM verses_fts fts
+        CROSS JOIN verses v ON v.id = fts.rowid
         JOIN books b ON v.book_id = b.id
         WHERE verses_fts MATCH 'pastor*'
+          AND v.version_id = 'RVR1960'
         LIMIT 100;
         """
     ).fetchall()
@@ -863,19 +1115,22 @@ def verify_database(db_path: Path) -> None:
 
     size_mb = db_path.stat().st_size / (1024 * 1024)
     print("\n" + "=" * 72)
-    print("REPORTE DE VERIFICACIÓN - FASE 1 (bible_hymns_choruses.db)")
+    print("REPORTE DE VERIFICACIÓN - MULTIVERSIÓN (bible_hymns_choruses.db)")
     print("=" * 72)
     print(f"Ruta de salida       : {db_path}")
     print(f"Tamaño final (VACUUM): {size_mb:.2f} MB")
-    print(f"Total Libros RVR1960 : {books_count} (AT: {at_count}, NT: {nt_count})")
+    print(f"Versiones            : {', '.join(f'{v[0]} ({v[1]})' for v in versions)}")
+    print(f"Total Libros         : {books_count} (AT: {at_count}, NT: {nt_count})")
     print(f"Total Versículos     : {verses_count:,}")
-    print(f"Total Himnos (HYMN)  : {hymns_count} (Págs. 2-225 excluyendo 212-213)")
-    print(f"Total Coros (CHORUS) : {choruses_count} (Págs. 248-334)")
+    for vid, vcnt, hcnt in per_version_stats:
+        print(f"  - {vid:<8}        : {vcnt:,} versículos, {hcnt:,} subtítulos")
+    print(f"Total Himnos (HYMN)  : {hymns_count}")
+    print(f"Total Coros (CHORUS) : {choruses_count}")
     print(f"Total Canciones      : {hymns_count + choruses_count}")
     print("-" * 72)
-    print(f"Benchmark FTS4 Biblia ('pastor*')        : {t_bible_fts_ms:.2f} ms ({len(fts_verses)} resultados)")
-    print(f"Benchmark FTS4 Canciones ('lluvias*')    : {t_songs_fts_ms:.2f} ms ({len(fts_songs)} resultados)")
-    print(f"Benchmark Índice #104 (idx_songs_type_nr): {t_song_num_ms:.3f} ms -> {song_104}")
+    print(f"Benchmark FTS4 Biblia ('pastor*', RVR1960): {t_bible_fts_ms:.2f} ms ({len(fts_verses)} resultados)")
+    print(f"Benchmark FTS4 Canciones ('lluvias*')     : {t_songs_fts_ms:.2f} ms ({len(fts_songs)} resultados)")
+    print(f"Benchmark Índice #104 (idx_songs_type_nr) : {t_song_num_ms:.3f} ms -> {song_104}")
     print("=" * 72)
 
     conn.close()
@@ -883,11 +1138,15 @@ def verify_database(db_path: Path) -> None:
 
 def main() -> None:
     t_start = time.perf_counter()
-    books_data = load_rvr1960_bible()
-    page_map = extract_pdf_pages_hybrid(PDF_DEFAULT_PATH)
-    hymns = parse_hymns(page_map)
-    choruses = parse_choruses(page_map)
-    build_database(books_data, hymns, choruses, DB_OUTPUT_PATH)
+    versions_data = load_bible_versions()
+    existing_songs = load_existing_songs(DB_OUTPUT_PATH)
+    if existing_songs is not None:
+        hymns, choruses = existing_songs
+    else:
+        page_map = extract_pdf_pages_hybrid(PDF_DEFAULT_PATH)
+        hymns = parse_hymns(page_map)
+        choruses = parse_choruses(page_map)
+    build_database(versions_data, hymns, choruses, DB_OUTPUT_PATH)
     verify_database(DB_OUTPUT_PATH)
     print(f"Tiempo total de construcción SQLite/FTS4: {time.perf_counter() - t_start:.2f} s")
 

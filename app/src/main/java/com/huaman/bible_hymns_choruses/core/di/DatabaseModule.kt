@@ -3,8 +3,10 @@ package com.huaman.bible_hymns_choruses.core.di
 import android.content.Context
 import androidx.room.Room
 import com.huaman.bible_hymns_choruses.data.local.BibleHymnsDatabase
+import com.huaman.bible_hymns_choruses.data.local.UserBookmarksDatabase
 import com.huaman.bible_hymns_choruses.data.local.dao.BibleDao
 import com.huaman.bible_hymns_choruses.data.local.dao.BookmarkDao
+import com.huaman.bible_hymns_choruses.data.local.dao.NoteDao
 import com.huaman.bible_hymns_choruses.data.local.dao.SongDao
 import dagger.Module
 import dagger.Provides
@@ -33,11 +35,28 @@ object DatabaseModule {
     }
 
     @Provides
+    @Singleton
+    fun provideUserBookmarksDatabase(
+        @ApplicationContext context: Context
+    ): UserBookmarksDatabase {
+        return Room.databaseBuilder(
+            context,
+            UserBookmarksDatabase::class.java,
+            UserBookmarksDatabase.DATABASE_NAME
+        )
+            .addMigrations(UserBookmarksDatabase.MIGRATION_1_2)
+            .build()
+    }
+
+    @Provides
     fun provideBibleDao(database: BibleHymnsDatabase): BibleDao = database.bibleDao()
 
     @Provides
     fun provideSongDao(database: BibleHymnsDatabase): SongDao = database.songDao()
 
     @Provides
-    fun provideBookmarkDao(database: BibleHymnsDatabase): BookmarkDao = database.bookmarkDao()
+    fun provideBookmarkDao(database: UserBookmarksDatabase): BookmarkDao = database.bookmarkDao()
+
+    @Provides
+    fun provideNoteDao(database: UserBookmarksDatabase): NoteDao = database.noteDao()
 }

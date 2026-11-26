@@ -4,9 +4,17 @@ import com.huaman.bible_hymns_choruses.data.mapper.toDomain
 import com.huaman.bible_hymns_choruses.data.repository.BibleRepository
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
+import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+
+class GetBibleVersionsUseCase @Inject constructor(
+    private val bibleRepository: BibleRepository
+) {
+    operator fun invoke(): Flow<List<BibleVersion>> =
+        bibleRepository.versions.map { list -> list.map { it.toDomain() } }
+}
 
 class GetBibleBooksUseCase @Inject constructor(
     private val bibleRepository: BibleRepository
@@ -18,7 +26,7 @@ class GetBibleBooksUseCase @Inject constructor(
 class GetBibleChapterUseCase @Inject constructor(
     private val bibleRepository: BibleRepository
 ) {
-    operator fun invoke(bookId: Int, chapter: Int): Flow<List<BibleVerse>> =
-        bibleRepository.getChapterVerses(bookId, chapter)
+    operator fun invoke(versionId: String, bookId: Int, chapter: Int): Flow<List<BibleVerse>> =
+        bibleRepository.getChapterVerses(versionId, bookId, chapter)
             .map { list -> list.map { it.toDomain() } }
 }

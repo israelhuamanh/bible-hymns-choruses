@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.TextDecrease
 import androidx.compose.material.icons.rounded.TextIncrease
 import androidx.compose.material3.Card
@@ -47,11 +48,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.huaman.bible_hymns_choruses.core.util.sharePlainText
 import com.huaman.bible_hymns_choruses.domain.model.SongStanzaBlock
 import com.huaman.bible_hymns_choruses.domain.model.SongType
 import com.huaman.bible_hymns_choruses.ui.theme.readerBodyTextStyle
@@ -66,6 +69,7 @@ fun SongDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(songId) {
         viewModel.onIntent(SongDetailIntent.LoadSong(songId))
@@ -148,6 +152,23 @@ fun SongDetailScreen(
                             )
                         ) {
                             Icon(Icons.Rounded.ContentCopy, contentDescription = "Copiar letra")
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        FilledTonalIconButton(
+                            onClick = {
+                                val formatted = "${song.type.label.dropLast(1)} #${song.number} - ${song.title}\n\n${song.rawLyrics}"
+                                sharePlainText(
+                                    context = context,
+                                    text = formatted,
+                                    chooserTitle = "Compartir canto"
+                                )
+                            },
+                            shapes = IconButtonDefaults.shapes(
+                                shape = IconButtonDefaults.smallRoundShape,
+                                pressedShape = IconButtonDefaults.smallPressedShape
+                            )
+                        ) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Compartir canto")
                         }
                         Spacer(Modifier.width(4.dp))
                         FilledTonalIconButton(

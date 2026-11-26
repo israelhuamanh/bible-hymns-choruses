@@ -1,0 +1,561 @@
+package com.huaman.bible_hymns_choruses.presentation.notes
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.net.Uri
+import android.os.Build
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.huaman.bible_hymns_choruses.core.util.DateSortOrder
+import com.huaman.bible_hymns_choruses.core.util.extractMonth
+import com.huaman.bible_hymns_choruses.core.util.extractYear
+import com.huaman.bible_hymns_choruses.domain.model.NoteItem
+import com.huaman.bible_hymns_choruses.domain.usecase.ManageNotesUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import javax.inject.Inject
+import kotlin.math.max
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@HiltViewModel
+class NotesViewModel @Inject constructor(
+    private val manageNotesUseCase: ManageNotesUseCase,
+    @param:ApplicationContext private val appContext: Context
+) : ViewModel() {
+
+    private data class FilterCriteria(
+        val sortOrder: DateSortOrder = DateSortOrder.NEWEST_FIRST,
+        val selectedYear: Int? = null,
+        val selectedMonth: Int? = null
+    )
+
+    private val _uiState = MutableStateFlow(NotesUiState())
+    val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
+
+    private val _effects = MutableSharedFlow<NotesEffect>(extraBufferCapacity = 8)
+    val effects: SharedFlow<NotesEffect> = _effects.asSharedFlow()
+
+    private val criteriaFlow = MutableStateFlow(FilterCriteria())
+    private var lastDeletedNote: NoteItem? = null
+
+    private var mediaPlayer: MediaPlayer? = null
+    private var mediaRecorder: MediaRecorder? = null
+    private var activeRecordingFile: File? = null
+    private var recordingTimerJob: Job? = null
+    private var playbackTimerJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            combine(
+                manageNotesUseCase.observeAll(),
+                criteriaFlow
+            ) { list, criteria ->
+                val years = list
+                    .map { extractYear(it.createdAt) }
+                    .distinct()
+                    .sortedDescending()
+
+                val activeYear = criteria.selectedYear?.takeIf { it in years }
+
+                val byYear = if (activeYear == null) {
+                    list
+                } else {
+                    list.filter { extractYear(it.createdAt) == activeYear }
+                }
+
+                val months = byYear
+                    .map { extractMonth(it.createdAt) }
+                    .distinct()
+                    .sorted()
+
+                val activeMonth = criteria.selectedMonth?.takeIf { it in months }
+
+                val byMonth = if (activeMonth == null) {
+                    byYear
+                } else {
+                    byYear.filter { extractMonth(it.createdAt) == activeMonth }
+                }
+
+                val sorted = when (criteria.sortOrder) {
+                    DateSortOrder.NEWEST_FIRST -> byMonth.sortedByDescending { it.createdAt }
+                    DateSortOrder.OLDEST_FIRST -> byMonth.sortedBy { it.createdAt }
+                }
+
+                Triple(
+                    list,
+                    sorted,
+                    Triple(criteria.sortOrder, years to activeYear, months to activeMonth)
+                )
+            }
+                .flowOn(Dispatchers.Default)
+                .collect { (allNotes, filtered, meta) ->
+                    val (sortOrder, yearInfo, monthInfo) = meta
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            notes = allNotes,
+                            filteredNotes = filtered,
+                            sortOrder = sortOrder,
+                            availableYears = yearInfo.first,
+                            selectedYear = yearInfo.second,
+                            availableMonths = monthInfo.first,
+                            selectedMonth = monthInfo.second
+                        )
+                    }
+                }
+        }
+    }
+
+    fun onIntent(intent: NotesIntent) {
+        when (intent) {
+            is NotesIntent.PrepareNewNote -> {
+                stopAudioRecording(discard = true)
+                stopAudioPlayback()
+                _uiState.update {
+                    it.copy(
+                        editingNoteId = 0,
+                        editingCreatedAt = null,
+                        draftTitle = "",
+                        draftContent = "",
+                        draftImagePaths = emptyList(),
+                        draftAudioPaths = emptyList(),
+                        isRecordingAudio = false,
+                        recordingElapsedSeconds = 0
+                    )
+                }
+            }
+
+            is NotesIntent.LoadNoteForEdit -> {
+                stopAudioRecording(discard = true)
+                stopAudioPlayback()
+                if (intent.noteId == 0) {
+                    onIntent(NotesIntent.PrepareNewNote)
+                    return
+                }
+                val existing = _uiState.value.notes.firstOrNull { it.id == intent.noteId }
+                if (existing != null) {
+                    _uiState.update {
+                        it.copy(
+                            editingNoteId = existing.id,
+                            editingCreatedAt = existing.createdAt,
+                            draftTitle = existing.title,
+                            draftContent = existing.content,
+                            draftImagePaths = existing.imagePaths,
+                            draftAudioPaths = existing.audioPaths,
+                            isRecordingAudio = false,
+                            recordingElapsedSeconds = 0
+                        )
+                    }
+                }
+            }
+
+            is NotesIntent.UpdateTitle -> {
+                _uiState.update { it.copy(draftTitle = intent.title) }
+            }
+
+            is NotesIntent.UpdateContent -> {
+                _uiState.update { it.copy(draftContent = intent.content) }
+            }
+
+            is NotesIntent.AttachImageUri -> {
+                viewModelScope.launch {
+                    val savedPath = compressAndSaveImageToInternalStorage(Uri.parse(intent.uriString))
+                    if (savedPath != null) {
+                        _uiState.update {
+                            it.copy(draftImagePaths = it.draftImagePaths + savedPath)
+                        }
+                    } else {
+                        _effects.tryEmit(NotesEffect.ShowMessage("No se pudo adjuntar la imagen"))
+                    }
+                }
+            }
+
+            is NotesIntent.RemoveImagePath -> {
+                _uiState.update {
+                    it.copy(draftImagePaths = it.draftImagePaths - intent.path)
+                }
+            }
+
+            is NotesIntent.StartAudioRecording -> {
+                startAudioRecording()
+            }
+
+            is NotesIntent.StopAudioRecording -> {
+                stopAudioRecording(discard = false)
+            }
+
+            is NotesIntent.CancelAudioRecording -> {
+                stopAudioRecording(discard = true)
+            }
+
+            is NotesIntent.RemoveAudioPath -> {
+                if (_uiState.value.playingAudioPath == intent.path) {
+                    stopAudioPlayback()
+                }
+                _uiState.update {
+                    it.copy(draftAudioPaths = it.draftAudioPaths - intent.path)
+                }
+            }
+
+            is NotesIntent.SaveNote -> {
+                if (_uiState.value.isRecordingAudio) {
+                    stopAudioRecording(discard = false)
+                }
+                stopAudioPlayback()
+
+                val state = _uiState.value
+                val hasAnyContent = state.draftTitle.isNotBlank() ||
+                    state.draftContent.isNotBlank() ||
+                    state.draftImagePaths.isNotEmpty() ||
+                    state.draftAudioPaths.isNotEmpty()
+
+                if (!hasAnyContent) {
+                    _effects.tryEmit(NotesEffect.ShowMessage("Escribe un apunte, graba un audio o adjunta una imagen"))
+                    return
+                }
+
+                viewModelScope.launch {
+                    manageNotesUseCase.save(
+                        id = state.editingNoteId,
+                        title = state.draftTitle,
+                        content = state.draftContent,
+                        imagePaths = state.draftImagePaths,
+                        audioPaths = state.draftAudioPaths,
+                        createdAt = state.editingCreatedAt
+                    )
+                    _effects.tryEmit(NotesEffect.ShowMessage("Apunte guardado"))
+                    _effects.tryEmit(NotesEffect.NoteSaved)
+                }
+            }
+
+            is NotesIntent.DeleteNote -> {
+                val target = _uiState.value.notes.firstOrNull { it.id == intent.id }
+                if (target != null && _uiState.value.playingAudioPath in target.audioPaths) {
+                    stopAudioPlayback()
+                }
+                viewModelScope.launch(Dispatchers.IO) {
+                    // Clean up files from any previous deleted note that was not undone
+                    lastDeletedNote?.let { previousDeleted ->
+                        if (previousDeleted.id != target?.id) {
+                            (previousDeleted.imagePaths + previousDeleted.audioPaths).forEach { path ->
+                                runCatching { File(path).delete() }
+                            }
+                        }
+                    }
+                    lastDeletedNote = target
+                    manageNotesUseCase.removeById(intent.id)
+                    _effects.tryEmit(NotesEffect.ShowUndoDelete("Apunte eliminado"))
+                }
+            }
+
+            is NotesIntent.UndoDeleteNote -> {
+                val deleted = lastDeletedNote ?: return
+                lastDeletedNote = null
+                viewModelScope.launch(Dispatchers.IO) {
+                    manageNotesUseCase.restore(deleted)
+                    _effects.tryEmit(NotesEffect.ShowMessage("Apunte restaurado"))
+                }
+            }
+
+            is NotesIntent.ToggleSortOrder -> {
+                val next = if (criteriaFlow.value.sortOrder == DateSortOrder.NEWEST_FIRST) {
+                    DateSortOrder.OLDEST_FIRST
+                } else {
+                    DateSortOrder.NEWEST_FIRST
+                }
+                criteriaFlow.value = criteriaFlow.value.copy(sortOrder = next)
+            }
+
+            is NotesIntent.SelectYear -> {
+                criteriaFlow.value = criteriaFlow.value.copy(
+                    selectedYear = intent.year,
+                    selectedMonth = null
+                )
+            }
+
+            is NotesIntent.SelectMonth -> {
+                criteriaFlow.value = criteriaFlow.value.copy(selectedMonth = intent.month)
+            }
+
+            is NotesIntent.TogglePlayAudio -> {
+                toggleAudioPlayback(intent.path)
+            }
+
+            is NotesIntent.OpenImagePreview -> {
+                _uiState.update { it.copy(previewImagePath = intent.path) }
+            }
+        }
+    }
+
+    /**
+     * Records voice notes in universal MPEG-4 / AAC-LC mono @ 44.1 kHz / 32 kbps (~240 KB per minute),
+     * supported across all hardware AAC encoders and decoders on Android.
+     */
+    private fun startAudioRecording() {
+        if (_uiState.value.isRecordingAudio) return
+        stopAudioPlayback()
+
+        runCatching {
+            val dir = File(appContext.filesDir, "notes_audios")
+            if (!dir.exists()) dir.mkdirs()
+
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.getDefault()).format(Date())
+            val outFile = File(dir, "Voz_$timestamp.m4a")
+
+            @Suppress("DEPRECATION")
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(appContext)
+            } else {
+                MediaRecorder()
+            }
+
+            recorder.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioChannels(1)
+                setAudioSamplingRate(44100)
+                setAudioEncodingBitRate(32000)
+                setOutputFile(outFile.absolutePath)
+                prepare()
+                start()
+            }
+
+            mediaRecorder = recorder
+            activeRecordingFile = outFile
+            _uiState.update {
+                it.copy(
+                    isRecordingAudio = true,
+                    recordingElapsedSeconds = 0
+                )
+            }
+
+            recordingTimerJob?.cancel()
+            recordingTimerJob = viewModelScope.launch {
+                while (isActive) {
+                    delay(1000L)
+                    _uiState.update { state ->
+                        state.copy(recordingElapsedSeconds = state.recordingElapsedSeconds + 1)
+                    }
+                }
+            }
+        }.onFailure {
+            stopAudioRecording(discard = true)
+            _effects.tryEmit(NotesEffect.ShowMessage("No se pudo iniciar la grabación de voz"))
+        }
+    }
+
+    private fun stopAudioRecording(discard: Boolean) {
+        recordingTimerJob?.cancel()
+        recordingTimerJob = null
+
+        val recorder = mediaRecorder
+        val recordedFile = activeRecordingFile
+        mediaRecorder = null
+        activeRecordingFile = null
+
+        var stopSucceeded = true
+        if (recorder != null) {
+            stopSucceeded = runCatching { recorder.stop() }.isSuccess
+            runCatching { recorder.release() }
+        }
+
+        if (discard || !stopSucceeded) {
+            runCatching { recordedFile?.delete() }
+            _uiState.update {
+                it.copy(
+                    isRecordingAudio = false,
+                    recordingElapsedSeconds = 0
+                )
+            }
+            if (!discard && !stopSucceeded) {
+                _effects.tryEmit(NotesEffect.ShowMessage("Grabación demasiado corta, mantén al menos 1 segundo"))
+            }
+        } else {
+            val validPath = recordedFile
+                ?.takeIf { it.exists() && it.length() > 256L }
+                ?.absolutePath
+            _uiState.update { state ->
+                state.copy(
+                    isRecordingAudio = false,
+                    recordingElapsedSeconds = 0,
+                    draftAudioPaths = if (validPath != null) {
+                        state.draftAudioPaths + validPath
+                    } else {
+                        state.draftAudioPaths
+                    }
+                )
+            }
+        }
+    }
+
+    private fun toggleAudioPlayback(path: String) {
+        if (_uiState.value.playingAudioPath == path) {
+            stopAudioPlayback()
+            return
+        }
+        if (_uiState.value.isRecordingAudio) {
+            stopAudioRecording(discard = false)
+        }
+        stopAudioPlayback()
+
+        val audioFile = File(path)
+        if (!audioFile.exists() || audioFile.length() == 0L) {
+            _effects.tryEmit(NotesEffect.ShowMessage("El archivo de audio no se encuentra disponible"))
+            return
+        }
+
+        try {
+            val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            FileInputStream(audioFile).use { fis ->
+                player.setDataSource(fis.fd)
+                player.prepare()
+            }
+            val totalSeconds = ((player.duration.coerceAtLeast(0)) / 1000).coerceAtLeast(1)
+            player.setVolume(1.0f, 1.0f)
+            player.setOnCompletionListener {
+                stopAudioPlayback()
+            }
+            player.setOnErrorListener { _, _, _ ->
+                stopAudioPlayback()
+                _effects.tryEmit(NotesEffect.ShowMessage("Error durante la reproducción del audio"))
+                true
+            }
+            player.start()
+            mediaPlayer = player
+            _uiState.update {
+                it.copy(
+                    playingAudioPath = path,
+                    playingElapsedSeconds = 0,
+                    playingDurationSeconds = totalSeconds
+                )
+            }
+
+            playbackTimerJob?.cancel()
+            playbackTimerJob = viewModelScope.launch {
+                while (isActive && mediaPlayer != null) {
+                    val currentSec = runCatching {
+                        (mediaPlayer?.currentPosition ?: 0) / 1000
+                    }.getOrDefault(0)
+                    _uiState.update { state ->
+                        state.copy(
+                            playingElapsedSeconds = currentSec.coerceIn(0, state.playingDurationSeconds)
+                        )
+                    }
+                    delay(250L)
+                }
+            }
+        } catch (_: Exception) {
+            stopAudioPlayback()
+            _effects.tryEmit(NotesEffect.ShowMessage("No se pudo reproducir el audio"))
+        }
+    }
+
+    private fun stopAudioPlayback() {
+        playbackTimerJob?.cancel()
+        playbackTimerJob = null
+        runCatching {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+        }
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        _uiState.update {
+            it.copy(
+                playingAudioPath = null,
+                playingElapsedSeconds = 0,
+                playingDurationSeconds = 0
+            )
+        }
+    }
+
+    /**
+     * Downscales attached images to max 1280px longest side and compresses to JPEG 80% (~100-180 KB)
+     * so dozens of images across many Apuntes keep the app fast and lightweight.
+     */
+    private suspend fun compressAndSaveImageToInternalStorage(uri: Uri): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val dir = File(appContext.filesDir, "notes_images")
+                if (!dir.exists()) dir.mkdirs()
+
+                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    BitmapFactory.decodeStream(input, null, boundsOptions)
+                }
+
+                val maxDimension = 1280
+                val longestSide = max(boundsOptions.outWidth, boundsOptions.outHeight)
+                var sampleSize = 1
+                while (longestSide / (sampleSize * 2) >= maxDimension) {
+                    sampleSize *= 2
+                }
+
+                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decodedBitmap = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                    BitmapFactory.decodeStream(input, null, decodeOptions)
+                } ?: return@withContext null
+
+                val finalBitmap = if (max(decodedBitmap.width, decodedBitmap.height) > maxDimension) {
+                    val ratio = maxDimension.toFloat() / max(decodedBitmap.width, decodedBitmap.height).toFloat()
+                    val targetW = (decodedBitmap.width * ratio).toInt().coerceAtLeast(1)
+                    val targetH = (decodedBitmap.height * ratio).toInt().coerceAtLeast(1)
+                    Bitmap.createScaledBitmap(decodedBitmap, targetW, targetH, true).also {
+                        if (it != decodedBitmap) decodedBitmap.recycle()
+                    }
+                } else {
+                    decodedBitmap
+                }
+
+                val destFile = File(dir, "img_${System.currentTimeMillis()}.jpg")
+                FileOutputStream(destFile).use { out ->
+                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                }
+                finalBitmap.recycle()
+                destFile.absolutePath
+            }.getOrNull()
+        }
+
+    override fun onCleared() {
+        stopAudioRecording(discard = true)
+        stopAudioPlayback()
+        lastDeletedNote?.let { deleted ->
+            (deleted.imagePaths + deleted.audioPaths).forEach { path ->
+                runCatching { File(path).delete() }
+            }
+        }
+        lastDeletedNote = null
+        super.onCleared()
+    }
+}

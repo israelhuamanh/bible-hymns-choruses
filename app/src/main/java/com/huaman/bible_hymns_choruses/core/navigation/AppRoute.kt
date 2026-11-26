@@ -36,4 +36,15 @@ sealed interface AppRoute {
     data class GlobalSearchRoute(
         val initialQuery: String = ""
     ) : AppRoute
+
+    @Serializable
+    data class NoteEditorRoute(
+        val noteId: Int = 0
+    ) : AppRoute
+
+    @Serializable
+    data class BookmarkDetailRoute(
+        val bookmarkId: Int,
+        val startInEditMode: Boolean = false
+    ) : AppRoute
 }

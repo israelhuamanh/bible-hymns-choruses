@@ -25,8 +25,9 @@ android {
     buildTypes {
         release {
             optimization {
-                enable = false
+                enable = true
             }
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

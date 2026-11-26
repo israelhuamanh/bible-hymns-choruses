@@ -1,12 +1,13 @@
 package com.huaman.bible_hymns_choruses.presentation.search
 
 import androidx.compose.runtime.Immutable
+import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.domain.model.UnifiedSearchResult
 
 @Immutable
 enum class SearchTab(val label: String) {
     ALL("Todo"),
-    BIBLE("Biblia RVR1960"),
+    BIBLE("Biblia"),
     HYMNS("Himnos"),
     CHORUSES("Coros")
 }
@@ -14,6 +15,7 @@ enum class SearchTab(val label: String) {
 @Immutable
 data class SearchUiState(
     val query: String = "",
+    val activeVersionId: String = UserPreferences.DEFAULT_BIBLE_VERSION_ID,
     val selectedTab: SearchTab = SearchTab.ALL,
     val isSearching: Boolean = false,
     val result: UnifiedSearchResult = UnifiedSearchResult(query = ""),

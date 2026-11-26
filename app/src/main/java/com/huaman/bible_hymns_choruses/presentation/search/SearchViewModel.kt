@@ -2,6 +2,7 @@ package com.huaman.bible_hymns_choruses.presentation.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.domain.model.UnifiedSearchResult
 import com.huaman.bible_hymns_choruses.domain.usecase.SmartSearchUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,18 +13,21 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val smartSearchUseCase: SmartSearchUseCase
+    private val smartSearchUseCase: SmartSearchUseCase,
+    private val userPreferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -37,16 +41,22 @@ class SearchViewModel @Inject constructor(
 
     private fun observeReactiveSearch() {
         viewModelScope.launch {
-            queryFlow
-                .debounce(150L)
+            val activeVersionFlow = userPreferencesRepository.userPreferencesFlow
+                .map { it.selectedBibleVersionId }
                 .distinctUntilChanged()
-                .flatMapLatest { q ->
+
+            combine(
+                queryFlow.debounce(150L).distinctUntilChanged(),
+                activeVersionFlow
+            ) { q, versionId -> q to versionId }
+                .flatMapLatest { (q, versionId) ->
                     flow {
+                        _uiState.update { it.copy(activeVersionId = versionId) }
                         if (q.isBlank()) {
                             emit(UnifiedSearchResult(query = ""))
                         } else {
                             _uiState.update { it.copy(isSearching = true) }
-                            emit(smartSearchUseCase(q))
+                            emit(smartSearchUseCase(q, versionId))
                         }
                     }.flowOn(Dispatchers.IO)
                 }
