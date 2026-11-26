@@ -2,6 +2,8 @@
 
 package com.huaman.bible_hymns_choruses.presentation.songs
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -37,11 +40,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
@@ -50,9 +50,15 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,44 +132,21 @@ fun SongsScreen(
                 }
             }
 
-            // Quick numeric jump bar ("N.º") + Title/lyrics filter search
+            // Quick numeric jump pill ("Ir al N.º") + Title/lyrics filter search pill
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
+                ExpressiveSearchPill(
                     value = uiState.jumpNumberQuery,
                     onValueChange = { viewModel.onIntent(SongsIntent.UpdateJumpNumber(it)) },
-                    modifier = Modifier.weight(0.36f),
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    placeholder = {
-                        Text(
-                            text = "N.º",
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Tag,
-                            contentDescription = "Ir al número",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (uiState.jumpNumberQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onIntent(SongsIntent.ExecuteJumpToNumber) }) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                                    contentDescription = "Ir al número",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
+                    placeholder = "Ir al N.º",
+                    leadingIcon = Icons.Rounded.Tag,
+                    leadingContentDescription = "Ir al número",
+                    trailingIcon = if (uiState.jumpNumberQuery.isNotEmpty()) Icons.AutoMirrored.Rounded.ArrowForward else null,
+                    trailingContentDescription = "Ir al número",
+                    onTrailingClick = { viewModel.onIntent(SongsIntent.ExecuteJumpToNumber) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Go
@@ -171,50 +154,23 @@ fun SongsScreen(
                     keyboardActions = KeyboardActions(
                         onGo = { viewModel.onIntent(SongsIntent.ExecuteJumpToNumber) }
                     ),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
+                    modifier = Modifier.weight(0.37f)
                 )
 
-                OutlinedTextField(
+                ExpressiveSearchPill(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.onIntent(SongsIntent.UpdateSearchQuery(it)) },
-                    modifier = Modifier.weight(0.64f),
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    placeholder = {
-                        Text(
-                            text = "Buscar título o letra",
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = "Buscar título o letra",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (uiState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onIntent(SongsIntent.UpdateSearchQuery("")) }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = "Limpiar",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
+                    placeholder = "Buscar título o letra",
+                    leadingIcon = Icons.Rounded.Search,
+                    leadingContentDescription = "Buscar título o letra",
+                    trailingIcon = if (uiState.searchQuery.isNotEmpty()) Icons.Rounded.Close else null,
+                    trailingContentDescription = "Limpiar",
+                    onTrailingClick = { viewModel.onIntent(SongsIntent.UpdateSearchQuery("")) },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Search
+                    ),
+                    modifier = Modifier.weight(0.63f)
                 )
             }
 
@@ -349,3 +305,108 @@ private fun SongSummaryCard(
         }
     }
 }
+
+@Composable
+private fun ExpressiveSearchPill(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    leadingIcon: ImageVector,
+    leadingContentDescription: String,
+    modifier: Modifier = Modifier,
+    trailingIcon: ImageVector? = null,
+    trailingContentDescription: String? = null,
+    onTrailingClick: (() -> Unit)? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = modifier.height(48.dp),
+        shape = CircleShape,
+        color = if (isFocused) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        border = BorderStroke(
+            width = if (isFocused) 1.5.dp else 1.dp,
+            color = if (isFocused) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = Modifier
+                .fillMaxSize()
+                .onFocusChanged { isFocused = it.isFocused },
+            decorationBox = { innerTextField ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = leadingContentDescription,
+                        tint = if (isFocused) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = placeholder,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                    if (trailingIcon != null && onTrailingClick != null) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .clickable(onClick = onTrailingClick)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = trailingIcon,
+                                    contentDescription = trailingContentDescription,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+}
+
