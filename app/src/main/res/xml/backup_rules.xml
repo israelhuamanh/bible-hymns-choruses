@@ -6,10 +6,4 @@
     <include domain="file" path="notes_images" />
     <include domain="file" path="notes_audios" />
     <include domain="file" path="datastore" />
-    <exclude domain="database" path="bible_hymns_choruses.db" />
-    <exclude domain="database" path="bible_hymns_choruses.db-shm" />
-    <exclude domain="database" path="bible_hymns_choruses.db-wal" />
-    <exclude domain="database" path="bible_hymns_choruses_v3.db" />
-    <exclude domain="database" path="bible_hymns_choruses_v3.db-shm" />
-    <exclude domain="database" path="bible_hymns_choruses_v3.db-wal" />
 </full-backup-content>
