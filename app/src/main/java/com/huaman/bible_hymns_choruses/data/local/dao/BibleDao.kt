@@ -17,6 +17,9 @@ interface BibleDao {
     @Query("SELECT * FROM books ORDER BY id ASC")
     fun getAllBooks(): Flow<List<BookEntity>>
 
+    @Query("SELECT * FROM verses WHERE id = :id LIMIT 1")
+    suspend fun getVerseById(id: Int): VerseEntity?
+
     @Query(
         """
         SELECT * FROM verses

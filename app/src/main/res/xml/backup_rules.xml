@@ -1,13 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
--->
+<?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <include domain="database" path="user_bookmarks.db" />
+    <include domain="database" path="user_bookmarks.db-shm" />
+    <include domain="database" path="user_bookmarks.db-wal" />
+    <include domain="file" path="notes_images" />
+    <include domain="file" path="notes_audios" />
+    <include domain="file" path="datastore" />
+    <exclude domain="database" path="bible_hymns_choruses.db" />
+    <exclude domain="database" path="bible_hymns_choruses.db-shm" />
+    <exclude domain="database" path="bible_hymns_choruses.db-wal" />
+    <exclude domain="database" path="bible_hymns_choruses_v3.db" />
+    <exclude domain="database" path="bible_hymns_choruses_v3.db-shm" />
+    <exclude domain="database" path="bible_hymns_choruses_v3.db-wal" />
 </full-backup-content>

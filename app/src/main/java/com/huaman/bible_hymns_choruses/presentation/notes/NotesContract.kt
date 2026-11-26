@@ -1,12 +1,19 @@
 package com.huaman.bible_hymns_choruses.presentation.notes
 
 import androidx.compose.runtime.Immutable
+import com.huaman.bible_hymns_choruses.core.util.DateSortOrder
 import com.huaman.bible_hymns_choruses.domain.model.NoteItem
 
 @Immutable
 data class NotesUiState(
     val isLoading: Boolean = true,
     val notes: List<NoteItem> = emptyList(),
+    val filteredNotes: List<NoteItem> = emptyList(),
+    val sortOrder: DateSortOrder = DateSortOrder.NEWEST_FIRST,
+    val availableYears: List<Int> = emptyList(),
+    val selectedYear: Int? = null,
+    val availableMonths: List<Int> = emptyList(),
+    val selectedMonth: Int? = null,
     val editingNoteId: Int = 0,
     val editingCreatedAt: Long? = null,
     val draftTitle: String = "",
@@ -34,11 +41,16 @@ sealed interface NotesIntent {
     data class RemoveAudioPath(val path: String) : NotesIntent
     data object SaveNote : NotesIntent
     data class DeleteNote(val id: Int) : NotesIntent
+    data object UndoDeleteNote : NotesIntent
+    data object ToggleSortOrder : NotesIntent
+    data class SelectYear(val year: Int?) : NotesIntent
+    data class SelectMonth(val month: Int?) : NotesIntent
     data class TogglePlayAudio(val path: String) : NotesIntent
     data class OpenImagePreview(val path: String?) : NotesIntent
 }
 
 sealed interface NotesEffect {
     data class ShowMessage(val message: String) : NotesEffect
+    data class ShowUndoDelete(val message: String) : NotesEffect
     data object NoteSaved : NotesEffect
 }

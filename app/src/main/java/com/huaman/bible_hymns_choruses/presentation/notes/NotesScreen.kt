@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,13 +40,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -54,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -83,6 +88,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.huaman.bible_hymns_choruses.core.util.formatShortSpanishDate
+import com.huaman.bible_hymns_choruses.core.util.spanishMonthAbbrev
 import com.huaman.bible_hymns_choruses.domain.model.NoteItem
 import java.io.File
 import java.util.Locale
@@ -93,6 +100,7 @@ import kotlinx.coroutines.withContext
 fun NotesScreen(
     onOpenNoteEditor: (noteId: Int) -> Unit,
     onShowSnackbar: (String) -> Unit,
+    onShowUndoSnackbar: (message: String, onUndo: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     viewModel: NotesViewModel = hiltViewModel()
@@ -103,6 +111,11 @@ fun NotesScreen(
         viewModel.effects.collect { effect ->
             when (effect) {
                 is NotesEffect.ShowMessage -> onShowSnackbar(effect.message)
+                is NotesEffect.ShowUndoDelete -> {
+                    onShowUndoSnackbar(effect.message) {
+                        viewModel.onIntent(NotesIntent.UndoDeleteNote)
+                    }
+                }
                 is NotesEffect.NoteSaved -> Unit
             }
         }
@@ -113,42 +126,140 @@ fun NotesScreen(
             .fillMaxSize()
             .statusBarsPadding()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = "Apuntes",
-                style = MaterialTheme.typography.headlineMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            // From M3 (component-tokens.md -> ButtonSmall):
-            // ContainerHeight = 40.0.dp, LeadingSpace = 16.0.dp, TrailingSpace = 16.0.dp,
-            // IconSize = 20.0.dp, IconLabelSpace = 8.0.dp
-            Button(
-                onClick = { onOpenNoteEditor(0) },
-                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                modifier = Modifier.height(40.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "Nuevo apunte",
-                    style = MaterialTheme.typography.labelLargeEmphasized
+                    text = "Apuntes",
+                    style = MaterialTheme.typography.headlineMediumEmphasized,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
+
+                // From M3 (component-tokens.md -> ButtonSmall):
+                // ContainerHeight = 40.0.dp, LeadingSpace = 16.0.dp, TrailingSpace = 16.0.dp,
+                // IconSize = 20.0.dp, IconLabelSpace = 8.0.dp
+                Button(
+                    onClick = { onOpenNoteEditor(0) },
+                    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Nuevo apunte",
+                        style = MaterialTheme.typography.labelLargeEmphasized
+                    )
+                }
+            }
+
+            // Date Sort Order + Year & Month Filter Row
+            if (uiState.notes.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item(key = "notes_sort_order_chip") {
+                        FilterChip(
+                            selected = true,
+                            onClick = { viewModel.onIntent(NotesIntent.ToggleSortOrder) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.SwapVert,
+                                    contentDescription = "Ordenar por fecha",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = uiState.sortOrder.label,
+                                    style = MaterialTheme.typography.labelLargeEmphasized
+                                )
+                            },
+                            shape = CircleShape
+                        )
+                    }
+
+                    if (uiState.availableYears.isNotEmpty()) {
+                        item(key = "notes_year_all") {
+                            val selected = uiState.selectedYear == null
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.onIntent(NotesIntent.SelectYear(null)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CalendarMonth,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = "Todos los años",
+                                        style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge
+                                    )
+                                },
+                                shape = CircleShape
+                            )
+                        }
+
+                        items(uiState.availableYears, key = { "notes_year_$it" }) { year ->
+                            val selected = uiState.selectedYear == year
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    viewModel.onIntent(
+                                        NotesIntent.SelectYear(if (selected) null else year)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = year.toString(),
+                                        style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge
+                                    )
+                                },
+                                shape = CircleShape
+                            )
+                        }
+                    }
+
+                    if (uiState.availableMonths.size > 1 || uiState.selectedMonth != null) {
+                        items(uiState.availableMonths, key = { "notes_month_$it" }) { month ->
+                            val selected = uiState.selectedMonth == month
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    viewModel.onIntent(
+                                        NotesIntent.SelectMonth(if (selected) null else month)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = spanishMonthAbbrev(month),
+                                        style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge
+                                    )
+                                },
+                                shape = CircleShape
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        if (uiState.notes.isEmpty() && !uiState.isLoading) {
+        if (uiState.filteredNotes.isEmpty() && !uiState.isLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -166,7 +277,7 @@ fun NotesScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Aún no tienes apuntes",
+                        text = if (uiState.notes.isEmpty()) "Aún no tienes apuntes" else "No hay apuntes en este filtro de fecha",
                         style = MaterialTheme.typography.titleMediumEmphasized
                     )
                     Text(
@@ -185,7 +296,7 @@ fun NotesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(
-                    items = uiState.notes,
+                    items = uiState.filteredNotes,
                     key = { it.id }
                 ) { note ->
                     NoteCard(
@@ -214,7 +325,7 @@ fun NotesScreen(
 
 /**
  * Dedicated full-screen window for creating or editing an Apunte (navigated via [AppRoute.NoteEditorRoute]),
- * supporting multiple in-app voice recordings (AAC-LC 16kHz/24kbps) and responsive image attachments.
+ * supporting multiple in-app voice recordings (AAC-LC 44.1kHz/32kbps) and responsive image attachments.
  */
 @Composable
 fun NoteEditorScreen(
@@ -239,6 +350,7 @@ fun NoteEditorScreen(
         viewModel.effects.collect { effect ->
             when (effect) {
                 is NotesEffect.ShowMessage -> onShowSnackbar(effect.message)
+                is NotesEffect.ShowUndoDelete -> onShowSnackbar(effect.message)
                 is NotesEffect.NoteSaved -> onNavigateBack()
             }
         }
@@ -327,6 +439,7 @@ fun NoteEditorScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .imePadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -534,44 +647,92 @@ private fun NoteCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = note.title.ifBlank { "Apunte sin título" },
-                        style = MaterialTheme.typography.titleLargeEmphasized,
-                        color = if (note.title.isNotBlank()) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    if (note.content.isNotBlank()) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
                         Text(
-                            text = note.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis
+                            text = "Apunte",
+                            style = MaterialTheme.typography.labelSmallEmphasized,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) {
+                        Text(
+                            text = formatShortSpanishDate(note.createdAt),
+                            style = MaterialTheme.typography.labelSmallEmphasized,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                 }
 
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Rounded.DeleteOutline,
-                        contentDescription = "Eliminar apunte"
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    IconButton(
+                        onClick = onClick,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "Editar apunte",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = "Eliminar apunte",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = note.title.ifBlank { "Apunte sin título" },
+                    style = MaterialTheme.typography.titleLargeEmphasized,
+                    color = if (note.title.isNotBlank()) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (note.content.isNotBlank()) {
+                    Text(
+                        text = note.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

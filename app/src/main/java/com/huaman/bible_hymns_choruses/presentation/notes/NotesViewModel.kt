@@ -10,6 +10,10 @@ import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huaman.bible_hymns_choruses.core.util.DateSortOrder
+import com.huaman.bible_hymns_choruses.core.util.extractMonth
+import com.huaman.bible_hymns_choruses.core.util.extractYear
+import com.huaman.bible_hymns_choruses.domain.model.NoteItem
 import com.huaman.bible_hymns_choruses.domain.usecase.ManageNotesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,6 +34,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -41,11 +47,20 @@ class NotesViewModel @Inject constructor(
     @param:ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
+    private data class FilterCriteria(
+        val sortOrder: DateSortOrder = DateSortOrder.NEWEST_FIRST,
+        val selectedYear: Int? = null,
+        val selectedMonth: Int? = null
+    )
+
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
 
     private val _effects = MutableSharedFlow<NotesEffect>(extraBufferCapacity = 8)
     val effects: SharedFlow<NotesEffect> = _effects.asSharedFlow()
+
+    private val criteriaFlow = MutableStateFlow(FilterCriteria())
+    private var lastDeletedNote: NoteItem? = null
 
     private var mediaPlayer: MediaPlayer? = null
     private var mediaRecorder: MediaRecorder? = null
@@ -55,14 +70,63 @@ class NotesViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            manageNotesUseCase.observeAll().collect { list ->
-                _uiState.update { state ->
-                    state.copy(
-                        isLoading = false,
-                        notes = list
-                    )
+            combine(
+                manageNotesUseCase.observeAll(),
+                criteriaFlow
+            ) { list, criteria ->
+                val years = list
+                    .map { extractYear(it.createdAt) }
+                    .distinct()
+                    .sortedDescending()
+
+                val activeYear = criteria.selectedYear?.takeIf { it in years }
+
+                val byYear = if (activeYear == null) {
+                    list
+                } else {
+                    list.filter { extractYear(it.createdAt) == activeYear }
                 }
+
+                val months = byYear
+                    .map { extractMonth(it.createdAt) }
+                    .distinct()
+                    .sorted()
+
+                val activeMonth = criteria.selectedMonth?.takeIf { it in months }
+
+                val byMonth = if (activeMonth == null) {
+                    byYear
+                } else {
+                    byYear.filter { extractMonth(it.createdAt) == activeMonth }
+                }
+
+                val sorted = when (criteria.sortOrder) {
+                    DateSortOrder.NEWEST_FIRST -> byMonth.sortedByDescending { it.createdAt }
+                    DateSortOrder.OLDEST_FIRST -> byMonth.sortedBy { it.createdAt }
+                }
+
+                Triple(
+                    list,
+                    sorted,
+                    Triple(criteria.sortOrder, years to activeYear, months to activeMonth)
+                )
             }
+                .flowOn(Dispatchers.Default)
+                .collect { (allNotes, filtered, meta) ->
+                    val (sortOrder, yearInfo, monthInfo) = meta
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            notes = allNotes,
+                            filteredNotes = filtered,
+                            sortOrder = sortOrder,
+                            availableYears = yearInfo.first,
+                            selectedYear = yearInfo.second,
+                            availableMonths = monthInfo.first,
+                            selectedMonth = monthInfo.second
+                        )
+                    }
+                }
         }
     }
 
@@ -194,14 +258,47 @@ class NotesViewModel @Inject constructor(
                     stopAudioPlayback()
                 }
                 viewModelScope.launch(Dispatchers.IO) {
-                    target?.let { note ->
-                        (note.imagePaths + note.audioPaths).forEach { path ->
-                            runCatching { File(path).delete() }
+                    // Clean up files from any previous deleted note that was not undone
+                    lastDeletedNote?.let { previousDeleted ->
+                        if (previousDeleted.id != target?.id) {
+                            (previousDeleted.imagePaths + previousDeleted.audioPaths).forEach { path ->
+                                runCatching { File(path).delete() }
+                            }
                         }
                     }
+                    lastDeletedNote = target
                     manageNotesUseCase.removeById(intent.id)
-                    _effects.tryEmit(NotesEffect.ShowMessage("Apunte eliminado"))
+                    _effects.tryEmit(NotesEffect.ShowUndoDelete("Apunte eliminado"))
                 }
+            }
+
+            is NotesIntent.UndoDeleteNote -> {
+                val deleted = lastDeletedNote ?: return
+                lastDeletedNote = null
+                viewModelScope.launch(Dispatchers.IO) {
+                    manageNotesUseCase.restore(deleted)
+                    _effects.tryEmit(NotesEffect.ShowMessage("Apunte restaurado"))
+                }
+            }
+
+            is NotesIntent.ToggleSortOrder -> {
+                val next = if (criteriaFlow.value.sortOrder == DateSortOrder.NEWEST_FIRST) {
+                    DateSortOrder.OLDEST_FIRST
+                } else {
+                    DateSortOrder.NEWEST_FIRST
+                }
+                criteriaFlow.value = criteriaFlow.value.copy(sortOrder = next)
+            }
+
+            is NotesIntent.SelectYear -> {
+                criteriaFlow.value = criteriaFlow.value.copy(
+                    selectedYear = intent.year,
+                    selectedMonth = null
+                )
+            }
+
+            is NotesIntent.SelectMonth -> {
+                criteriaFlow.value = criteriaFlow.value.copy(selectedMonth = intent.month)
             }
 
             is NotesIntent.TogglePlayAudio -> {
@@ -453,6 +550,12 @@ class NotesViewModel @Inject constructor(
     override fun onCleared() {
         stopAudioRecording(discard = true)
         stopAudioPlayback()
+        lastDeletedNote?.let { deleted ->
+            (deleted.imagePaths + deleted.audioPaths).forEach { path ->
+                runCatching { File(path).delete() }
+            }
+        }
+        lastDeletedNote = null
         super.onCleared()
     }
 }

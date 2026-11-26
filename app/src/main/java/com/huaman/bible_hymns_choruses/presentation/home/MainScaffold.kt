@@ -47,8 +47,10 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,6 +91,7 @@ import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferences
 import com.huaman.bible_hymns_choruses.core.datastore.UserPreferencesRepository
 import com.huaman.bible_hymns_choruses.core.navigation.AppRoute
+import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarkDetailScreen
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksScreen
 import com.huaman.bible_hymns_choruses.presentation.bookmarks.BookmarksViewModel
 import com.huaman.bible_hymns_choruses.presentation.notes.NoteEditorScreen
@@ -225,6 +228,22 @@ fun MainScaffold(
         }
     }
 
+    val showUndoSnackbar: (String, () -> Unit) -> Unit = remember(snackbarHostState) {
+        { msg, onUndo ->
+            coroutineScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val result = snackbarHostState.showSnackbar(
+                    message = msg,
+                    actionLabel = "Deshacer",
+                    duration = SnackbarDuration.Short
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    onUndo()
+                }
+            }
+        }
+    }
+
     val isMainTabRoute = currentDestination?.hasRoute<AppRoute.BibleReaderRoute>() ?: true
 
     if (showOnboarding) {
@@ -287,10 +306,29 @@ fun MainScaffold(
                         if (ActiveAppTab.BOOKMARKS in visitedTabs) {
                             KeepAliveTabContainer(isActive = activeTab == ActiveAppTab.BOOKMARKS) {
                                 BookmarksScreen(
+                                    onOpenBookmarkDetail = { bookmarkId, startInEditMode ->
+                                        navController.navigate(
+                                            AppRoute.BookmarkDetailRoute(
+                                                bookmarkId = bookmarkId,
+                                                startInEditMode = startInEditMode
+                                            )
+                                        )
+                                    },
                                     onOpenSongDetail = { songId ->
                                         navController.navigate(AppRoute.SongDetailRoute(songId))
                                     },
+                                    onOpenBiblePassage = { bookId, chapter, verse ->
+                                        bibleViewModel.onIntent(
+                                            BibleReaderIntent.SelectLocation(
+                                                bookId = bookId,
+                                                chapter = chapter,
+                                                highlightVerse = verse
+                                            )
+                                        )
+                                        activeTab = ActiveAppTab.BIBLE
+                                    },
                                     onShowSnackbar = showSnackbar,
+                                    onShowUndoSnackbar = showUndoSnackbar,
                                     listState = bookmarksListState,
                                     viewModel = bookmarksViewModel
                                 )
@@ -304,12 +342,39 @@ fun MainScaffold(
                                         navController.navigate(AppRoute.NoteEditorRoute(noteId))
                                     },
                                     onShowSnackbar = showSnackbar,
+                                    onShowUndoSnackbar = showUndoSnackbar,
                                     listState = notesListState,
                                     viewModel = notesViewModel
                                 )
                             }
                         }
                     }
+                }
+
+                composable<AppRoute.BookmarkDetailRoute> { entry ->
+                    val route = entry.toRoute<AppRoute.BookmarkDetailRoute>()
+                    BookmarkDetailScreen(
+                        bookmarkId = route.bookmarkId,
+                        startInEditMode = route.startInEditMode,
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenSongDetail = { songId ->
+                            navController.navigate(AppRoute.SongDetailRoute(songId))
+                        },
+                        onOpenBiblePassage = { bookId, chapter, verse ->
+                            bibleViewModel.onIntent(
+                                BibleReaderIntent.SelectLocation(
+                                    bookId = bookId,
+                                    chapter = chapter,
+                                    highlightVerse = verse
+                                )
+                            )
+                            activeTab = ActiveAppTab.BIBLE
+                            navController.popBackStack()
+                        },
+                        onShowSnackbar = showSnackbar,
+                        onShowUndoSnackbar = showUndoSnackbar,
+                        viewModel = bookmarksViewModel
+                    )
                 }
 
                 composable<AppRoute.NoteEditorRoute> { entry ->

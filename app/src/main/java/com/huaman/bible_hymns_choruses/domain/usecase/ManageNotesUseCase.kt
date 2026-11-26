@@ -37,5 +37,18 @@ class ManageNotesUseCase @Inject constructor(
         return noteRepository.saveNote(entity)
     }
 
+    suspend fun restore(note: NoteItem): Long {
+        val entity = NoteEntity(
+            id = note.id,
+            title = note.title,
+            content = note.content,
+            imagePathsJson = Json.encodeToString(note.imagePaths),
+            audioPathsJson = Json.encodeToString(note.audioPaths),
+            createdAt = note.createdAt,
+            updatedAt = note.updatedAt
+        )
+        return noteRepository.saveNote(entity)
+    }
+
     suspend fun removeById(id: Int) = noteRepository.deleteNoteById(id)
 }

@@ -18,9 +18,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,8 +35,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -47,6 +52,7 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -79,7 +85,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -92,6 +101,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huaman.bible_hymns_choruses.core.datastore.ThemeMode
+import com.huaman.bible_hymns_choruses.core.util.sharePlainText
 import com.huaman.bible_hymns_choruses.domain.model.BibleBook
 import com.huaman.bible_hymns_choruses.domain.model.BibleVerse
 import com.huaman.bible_hymns_choruses.domain.model.BibleVersion
@@ -113,6 +123,7 @@ fun BibleReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(initialBookId, initialChapter, highlightVerse) {
         if (initialBookId != null && initialChapter != null) {
@@ -251,7 +262,7 @@ fun BibleReaderScreen(
             }
         }
 
-        // Contextual Verse Selection Action Bar (Copy / Bookmark / Note)
+        // Contextual Verse Selection Action Bar (Copy / Share / Bookmark / Note)
         AnimatedVisibility(
             visible = uiState.selectedVerseIds.isNotEmpty(),
             enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
@@ -266,6 +277,28 @@ fun BibleReaderScreen(
             VerseSelectionActionBar(
                 selectedCount = uiState.selectedVerseIds.size,
                 onCopy = { viewModel.onIntent(BibleReaderIntent.CopySelectedVerses) },
+                onShare = {
+                    val book = uiState.currentBook
+                    val selected = uiState.verses.filter { it.id in uiState.selectedVerseIds }
+                    if (book != null && selected.isNotEmpty()) {
+                        val rangeLabel = if (selected.size == 1) {
+                            selected.first().verseLabel.ifEmpty { selected.first().verse.toString() }
+                        } else {
+                            "${selected.first().verse}-${selected.last().verse}"
+                        }
+                        val header = "${book.name} ${uiState.currentChapter}:$rangeLabel (${uiState.currentVersionId})"
+                        val body = selected.joinToString("\n") { v ->
+                            val prefix = v.verseLabel.ifEmpty { v.verse.toString() }
+                            "$prefix. ${v.text}"
+                        }
+                        sharePlainText(
+                            context = context,
+                            text = "$header\n$body",
+                            chooserTitle = "Compartir pasaje"
+                        )
+                        viewModel.onIntent(BibleReaderIntent.ClearSelection)
+                    }
+                },
                 onBookmark = { viewModel.onIntent(BibleReaderIntent.BookmarkSelectedVerses()) },
                 onNote = { viewModel.onIntent(BibleReaderIntent.OpenVerseNoteSheet) },
                 onClear = { viewModel.onIntent(BibleReaderIntent.ClearSelection) }
@@ -565,6 +598,7 @@ private fun ChapterNavigationButtonGroup(
 private fun VerseSelectionActionBar(
     selectedCount: Int,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
     onBookmark: () -> Unit,
     onNote: () -> Unit,
     onClear: () -> Unit
@@ -578,26 +612,44 @@ private fun VerseSelectionActionBar(
         shadowElevation = 6.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "$selectedCount sel.",
-                style = MaterialTheme.typography.labelMediumEmphasized,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "$selectedCount",
+                style = MaterialTheme.typography.labelLargeEmphasized,
+                color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 6.dp)
             )
-            FilledTonalButton(
+            FilledTonalIconButton(
                 onClick = onCopy,
-                shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
-                contentPadding = PaddingValues(horizontal = 12.dp),
-                modifier = Modifier.height(40.dp)
+                shapes = IconButtonDefaults.shapes(
+                    shape = IconButtonDefaults.smallRoundShape,
+                    pressedShape = IconButtonDefaults.smallPressedShape
+                ),
+                modifier = Modifier.size(40.dp)
             ) {
-                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Copiar", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = "Copiar versículos",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onShare,
+                shapes = IconButtonDefaults.shapes(
+                    shape = IconButtonDefaults.smallRoundShape,
+                    pressedShape = IconButtonDefaults.smallPressedShape
+                ),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Share,
+                    contentDescription = "Compartir versículos",
+                    modifier = Modifier.size(18.dp)
+                )
             }
             FilledTonalButton(
                 onClick = onNote,
@@ -619,7 +671,10 @@ private fun VerseSelectionActionBar(
                 Spacer(Modifier.width(6.dp))
                 Text("Guardar", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
             }
-            FilledTonalIconButton(onClick = onClear) {
+            FilledTonalIconButton(
+                onClick = onClear,
+                modifier = Modifier.size(40.dp)
+            ) {
                 Icon(Icons.Rounded.Close, contentDescription = "Cancelar selección")
             }
         }
@@ -1038,16 +1093,27 @@ private fun VerseNoteSheet(
     onDismiss: () -> Unit
 ) {
     var noteText by rememberSaveable { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        contentWindowInsets = { WindowInsets.ime },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
@@ -1061,8 +1127,8 @@ private fun VerseNoteSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = referenceTitle,
@@ -1073,7 +1139,7 @@ private fun VerseNoteSheet(
                         text = passagePreview,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -1082,7 +1148,9 @@ private fun VerseNoteSheet(
             OutlinedTextField(
                 value = noteText,
                 onValueChange = { noteText = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
                 label = { Text("Escribe tu nota sobre este versículo") },
                 placeholder = { Text("Reflexión, enseñanza o recordatorio...") },
                 minLines = 3,
@@ -1129,3 +1197,4 @@ private fun VerseNoteSheet(
         }
     }
 }
+
